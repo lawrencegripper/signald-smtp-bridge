@@ -20,8 +20,10 @@
 		"-v",
 		"signaldsmtpbridge-bashhistory:/home/vscode/commandhistory",
 		// Mount docker socket for docker builds
-		"-v",
-		"/var/run/docker.sock:/var/run/docker.sock"
+		"-v", "/var/run/docker.sock:/var/run/docker.sock",
+		// signald socket
+		"-v", "/Users/lawrencegripper/.signald:/var/run/signald/",
+		"-v", "/Users/lawrencegripper/.signald:/signald/",
 	],
 	// Set *default* container specific settings.json values on container create.
 	"settings": {

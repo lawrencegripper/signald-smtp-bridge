@@ -19,8 +19,13 @@ var numberExtraction *regexp.Regexp
 
 func init() {
 	signaldClient = &signald.Signald{
-		SocketPath: "/signald/signald.sock",
+		SocketPath: "/var/run/signald/signald.sock",
 	}
+	err := signaldClient.Connect()
+	if err != nil {
+		panic(err)
+	}
+	go signaldClient.Listen(nil)
 
 	numberExtraction = regexp.MustCompile(`\+[0-9]*`)
 }
@@ -43,20 +48,20 @@ func (bkd *Backend) AnonymousLogin(state *smtp.ConnectionState) (smtp.Session, e
 
 // A Session is returned after successful login.
 type Session struct {
-	from string
-	to   string
-	data string
+	From        string
+	To          string
+	MessageBody string
 }
 
 func (s *Session) Mail(from string, opts smtp.MailOptions) error {
 	log.Println("Mail from:", from)
-	s.from = from
+	s.From = from
 	return nil
 }
 
 func (s *Session) Rcpt(to string) error {
 	log.Println("Rcpt to:", to)
-	s.to = to
+	s.To = to
 	return nil
 }
 
@@ -65,7 +70,7 @@ func (s *Session) Data(r io.Reader) error {
 		return err
 	} else {
 		log.Println("Data:", string(b))
-		s.data = string(b)
+		s.MessageBody = string(b)
 	}
 
 	return sendSignalMessage(s)
@@ -101,13 +106,14 @@ func mustGetNumberFromAddress(address string) string {
 }
 
 func sendSignalMessage(session *Session) error {
+	log.Printf("Sending message with signal: %v", session)
 	req := v1.SendRequest{
-		Username:    mustGetNumberFromAddress(session.from),
-		MessageBody: session.data,
+		Username:    mustGetNumberFromAddress(session.From),
+		MessageBody: session.MessageBody,
 	}
 
-	if strings.HasPrefix(mustGetNumberFromAddress(session.to), "+") {
-		req.RecipientAddress = &v1.JsonAddress{Number: session.to}
+	if strings.HasPrefix(mustGetNumberFromAddress(session.To), "+") {
+		req.RecipientAddress = &v1.JsonAddress{Number: session.To}
 	} else {
 		// req.RecipientGroupID = args[0]
 		panic("not implemented")
@@ -115,9 +121,9 @@ func sendSignalMessage(session *Session) error {
 
 	resp, err := req.Submit(signaldClient)
 	if err != nil {
-		log.Fatal("error sending request to signald: ", err)
+		log.Printf("error sending request to signald: %v\n", err)
 	}
-	_ = resp
+	log.Printf("Response: %v \n", resp)
 
 	return nil
 }
