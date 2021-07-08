@@ -22,11 +22,7 @@ func init() {
 		SocketPath: "/signald/signald.sock",
 	}
 
-	numberExtractionCompiled, err := regexp.Compile(`\+[0-9]*(?=@.*)`)
-	if err != nil {
-		panic(err)
-	}
-	numberExtraction = numberExtractionCompiled
+	numberExtraction = regexp.MustCompile(`\+[0-9]*`)
 }
 
 // The Backend implements SMTP server methods.
