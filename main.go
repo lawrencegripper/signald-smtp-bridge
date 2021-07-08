@@ -5,10 +5,29 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/emersion/go-smtp"
+	"gitlab.com/signald/signald-go/signald"
+	v1 "gitlab.com/signald/signald-go/signald/client-protocol/v1"
 )
+
+var signaldClient *signald.Signald
+var numberExtraction *regexp.Regexp
+
+func init() {
+	signaldClient = &signald.Signald{
+		SocketPath: "/signald/signald.sock",
+	}
+
+	numberExtractionCompiled, err := regexp.Compile(`\+[0-9]*(?=@.*)`)
+	if err != nil {
+		panic(err)
+	}
+	numberExtraction = numberExtractionCompiled
+}
 
 // The Backend implements SMTP server methods.
 type Backend struct{}
@@ -52,7 +71,8 @@ func (s *Session) Data(r io.Reader) error {
 		log.Println("Data:", string(b))
 		s.data = string(b)
 	}
-	return nil
+
+	return sendSignalMessage(s)
 }
 
 func (s *Session) Reset() {}
@@ -78,4 +98,30 @@ func main() {
 	if err := s.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func mustGetNumberFromAddress(address string) string {
+	return numberExtraction.FindString(address)
+}
+
+func sendSignalMessage(session *Session) error {
+	req := v1.SendRequest{
+		Username:    mustGetNumberFromAddress(session.from),
+		MessageBody: session.data,
+	}
+
+	if strings.HasPrefix(mustGetNumberFromAddress(session.to), "+") {
+		req.RecipientAddress = &v1.JsonAddress{Number: session.to}
+	} else {
+		// req.RecipientGroupID = args[0]
+		panic("not implemented")
+	}
+
+	resp, err := req.Submit(signaldClient)
+	if err != nil {
+		log.Fatal("error sending request to signald: ", err)
+	}
+	_ = resp
+
+	return nil
 }
