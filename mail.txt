@@ -1,8 +1,8 @@
 EHLO localhost
 AUTH PLAIN
 AHVzZXJuYW1lAHBhc3N3b3Jk
-MAIL FROM:<root@gripdev.org>
-RCPT TO:<445859594474@signal.bridge>
+MAIL FROM:<+440000000000@signal.bridge>
+RCPT TO:<+441111111111@signal.bridge>
 DATA
 Hey
 .

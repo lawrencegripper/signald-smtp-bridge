@@ -1,14 +1,23 @@
-# See here for image contents: https://github.com/microsoft/vscode-dev-containers/tree/v0.183.0/containers/go/.devcontainer/base.Dockerfile
-
-# [Choice] Go version: 1, 1.16, 1.15
 ARG VARIANT="1.16"
+
 FROM mcr.microsoft.com/vscode/devcontainers/go:0-${VARIANT}
 
+ENV DOCKER_VERSION=20.10.7
+# Save command line history 
+RUN echo "export HISTFILE=/home/vscode/commandhistory/.bash_history" >> "/home/vscode/.bashrc" \
+    && echo "export PROMPT_COMMAND='history -a'" >> "/home/vscode/.bashrc" \
+    && mkdir -p /home/vscode/commandhistory \
+    && touch /home/vscode/commandhistory/.bash_history
+
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
-    && apt-get -y install --no-install-recommends netcat telnet
+    && apt-get -y install --no-install-recommends netcat telnet wget
 
-# [Optional] Uncomment the next line to use go get to install anything else you need
-# RUN go get -x <your-dependency-or-tool>
+RUN wget https://gitlab.com/api/v4/projects/21018340/jobs/artifacts/main/raw/signaldctl?job=build%3Ax86 -O signalctrl && chmod +x signalctrl && mv signalctrl /usr/bin/signalctrl
 
-# [Optional] Uncomment this line to install global node packages.
-# RUN su vscode -c "source /usr/local/share/nvm/nvm.sh && npm install -g <your-package-here>" 2>&1
+# Install docker
+ENV DOCKER_BUILDKIT=1
+RUN curl -fsSLO https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_VERSION}.tgz \
+  && tar xzvf docker-${DOCKER_VERSION}.tgz --strip 1 \
+                 -C /usr/local/bin docker/docker \
+  && rm docker-${DOCKER_VERSION}.tgz
+
