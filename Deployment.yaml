@@ -1,0 +1,80 @@
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: signal
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smtp
+spec:
+  selector:
+    app: smtp-bridge
+  ports:
+    - protocol: TCP
+      port: 25
+      targetPort: smtp-server
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: signal
+  labels:
+    app: smtp-bridge
+  name: smtp-bridge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: smtp-bridge
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      namespace: signal
+      labels:
+        app: smtp-bridge
+    spec:
+      imagePullSecrets:
+        - name: ghcr-creds
+      containers:
+        - image: ghcr.io/lawrencegripper/signald-smtp-bridge:latest
+          name: smtp-bridge
+          ports:
+            - containerPort: 1025
+              name: smtp-server
+          resources:
+            limits:
+              memory: "300Mi"
+              cpu: "500m"
+          volumeMounts:
+            - mountPath: /signald
+              name: configdir
+        - image: chromedp/headless-shell
+          name: headless-chrome
+          args:
+            - "--remote-debugging-address=0.0.0.0"          
+            - "--remote-debugging-port=9222"
+            - "--disable-gpu"
+            - "--headless"
+          ports:
+            - containerPort: 9222          
+          resources:
+            limits:
+              memory: "300Mi"
+              cpu: "500m"
+        - image: finn/signald
+          name: signald
+          resources:
+            limits:
+              memory: "300Mi"
+              cpu: "500m"
+          volumeMounts:
+            - mountPath: /signald
+              name: configdir
+      restartPolicy: Always
+      volumes:
+        - name: configdir
+          hostPath:
+            path: /path/to/your/signald/config/folder
+            type: Directory

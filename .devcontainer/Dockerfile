@@ -21,3 +21,7 @@ RUN curl -fsSLO https://download.docker.com/linux/static/stable/x86_64/docker-${
                  -C /usr/local/bin docker/docker \
   && rm docker-${DOCKER_VERSION}.tgz
 
+# Install Kubeval
+RUN wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz \
+    && tar xf kubeval-linux-amd64.tar.gz \
+    && sudo cp kubeval /usr/local/bin
