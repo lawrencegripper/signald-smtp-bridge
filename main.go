@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DusanKasan/parsemail"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/emersion/go-smtp"
+	"github.com/marcospgmelo/parsemail"
 	"gitlab.com/signald/signald-go/signald"
 	v0 "gitlab.com/signald/signald-go/signald/client-protocol/v0"
 	v1 "gitlab.com/signald/signald-go/signald/client-protocol/v1"
