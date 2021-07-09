@@ -41,7 +41,7 @@ type Backend struct{}
 
 // Login handles a login command with username and password.
 func (bkd *Backend) Login(state *smtp.ConnectionState, username, password string) (smtp.Session, error) {
-	if username != os.Getenv("SMTP_USERNAME") || password != os.Getenv("SMTP_PASSWORD") {
+	if username != os.Getenv("SMTP_USERNAME") && password != os.Getenv("SMTP_PASSWORD") {
 		return nil, errors.New("Invalid username or password")
 	}
 	return &Session{}, nil
