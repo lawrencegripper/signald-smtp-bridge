@@ -16,6 +16,7 @@
 		"--cap-add=SYS_PTRACE",
 		"--security-opt",
 		"seccomp=unconfined",
+		"--network=host",
 		// Keep command history 
 		"-v",
 		"signaldsmtpbridge-bashhistory:/home/vscode/commandhistory",
@@ -24,6 +25,8 @@
 		// signald socket
 		"-v", "/Users/lawrencegripper/.signald:/var/run/signald/",
 		"-v", "/Users/lawrencegripper/.signald:/signald/",
+		// load the env file
+		"--env-file",".env"
 	],
 	// Set *default* container specific settings.json values on container create.
 	"settings": {

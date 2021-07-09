@@ -1,15 +1,25 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/DusanKasan/parsemail"
+	"github.com/chromedp/cdproto/page"
+	"github.com/chromedp/chromedp"
 	"github.com/emersion/go-smtp"
 	"gitlab.com/signald/signald-go/signald"
+	v0 "gitlab.com/signald/signald-go/signald/client-protocol/v0"
 	v1 "gitlab.com/signald/signald-go/signald/client-protocol/v1"
 )
 
@@ -46,7 +56,8 @@ func (bkd *Backend) AnonymousLogin(state *smtp.ConnectionState) (smtp.Session, e
 type Session struct {
 	From        string
 	To          string
-	MessageBody string
+	MessageData string
+	Email       *parsemail.Email
 }
 
 func (s *Session) Mail(from string, opts smtp.MailOptions) error {
@@ -66,7 +77,11 @@ func (s *Session) Data(r io.Reader) error {
 		return err
 	} else {
 		log.Println("Data:", string(b))
-		s.MessageBody = string(b)
+		s.MessageData = string(b)
+	}
+
+	if err := parseEmail(s); err != nil {
+		return err
 	}
 
 	return sendSignalMessage(s)
@@ -83,7 +98,7 @@ func main() {
 
 	s := smtp.NewServer(be)
 
-	s.Addr = ":25"
+	s.Addr = ":1025"
 	s.Domain = "localhost"
 	s.ReadTimeout = 10 * time.Second
 	s.WriteTimeout = 10 * time.Second
@@ -106,11 +121,96 @@ func mustGetRecipientFromAddress(address string) string {
 	return split[0]
 }
 
+func parseEmail(session *Session) error { // this reads an email message
+	email, err := parsemail.Parse(strings.NewReader(session.MessageData)) // returns Email struct and error
+	if err != nil {
+		return err
+	}
+
+	log.Println(email.Subject)
+	log.Println(email.From)
+	log.Println(email.To)
+	log.Println(email.HTMLBody)
+
+	session.Email = &email
+
+	return nil
+}
+
+// print a specific pdf page.
+func printToPDF(urlstr string, res *[]byte) chromedp.Tasks {
+	return chromedp.Tasks{
+		chromedp.Navigate(urlstr),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			buf, _, err := page.PrintToPDF().WithPrintBackground(false).Do(ctx)
+			if err != nil {
+				return err
+			}
+			*res = buf
+			return nil
+		}),
+	}
+}
+
+func captureHtmlEmailAsPDF(session *Session) error {
+	// create a test server to serve the page
+	ts := httptest.NewServer(
+		http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				_, _ = fmt.Fprint(w, session.Email.HTMLBody)
+			},
+		),
+	)
+	defer ts.Close()
+
+	// create headless chrome
+	resp, err := http.Get("http://localhost:9222/json/version")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var result map[string]interface{}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Fatal(err)
+	}
+	actxt, cancelActxt := chromedp.NewRemoteAllocator(context.Background(), result["webSocketDebuggerUrl"].(string))
+	defer cancelActxt()
+	ctx, cancel := chromedp.NewContext(actxt)
+	defer cancel()
+
+	// capture pdf
+	var buf []byte
+	if err := chromedp.Run(ctx, printToPDF(ts.URL, &buf)); err != nil {
+		return err
+	}
+
+	if err := ioutil.WriteFile("/var/run/signald/email.pdf", buf, 0777); err != nil {
+		return err
+	}
+	return nil
+}
+
 func sendSignalMessage(session *Session) error {
 	log.Printf("Converting email session to signal msg: %+v", session)
+
+	if session.Email.ContentType != "text/plain" {
+		captureHtmlEmailAsPDF(session)
+	}
+
+	signalMsg := session.Email.Subject + "\n\n" + session.Email.TextBody
+
 	req := v1.SendRequest{
 		Username:    mustGetRecipientFromAddress(session.From),
-		MessageBody: session.MessageBody,
+		MessageBody: signalMsg,
+	}
+
+	// check file exists
+	_, err := os.Stat("/signald/email.pdf")
+	if err == nil {
+		req.Attachments = []*v0.JsonAttachment{
+			{Filename: "/signald/email.pdf"},
+		}
 	}
 
 	recipient := mustGetRecipientFromAddress(session.To)
