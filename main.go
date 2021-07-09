@@ -5,7 +5,6 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"regexp"
 	"strings"
 	"time"
 
@@ -15,7 +14,6 @@ import (
 )
 
 var signaldClient *signald.Signald
-var numberExtraction *regexp.Regexp
 
 func init() {
 	signaldClient = &signald.Signald{
@@ -26,8 +24,6 @@ func init() {
 		panic(err)
 	}
 	go signaldClient.Listen(nil)
-
-	numberExtraction = regexp.MustCompile(`\+[0-9]*`)
 }
 
 // The Backend implements SMTP server methods.
@@ -101,29 +97,37 @@ func main() {
 	}
 }
 
-func mustGetNumberFromAddress(address string) string {
-	return numberExtraction.FindString(address)
+func mustGetRecipientFromAddress(address string) string {
+	split := strings.Split(address, "@")
+	if len(split) < 2 {
+		panic("Invalid address must be 'numberOrGroupId@signal.bridge")
+	}
+
+	return split[0]
 }
 
 func sendSignalMessage(session *Session) error {
-	log.Printf("Sending message with signal: %v", session)
+	log.Printf("Converting email session to signal msg: %+v", session)
 	req := v1.SendRequest{
-		Username:    mustGetNumberFromAddress(session.From),
+		Username:    mustGetRecipientFromAddress(session.From),
 		MessageBody: session.MessageBody,
 	}
 
-	if strings.HasPrefix(mustGetNumberFromAddress(session.To), "+") {
-		req.RecipientAddress = &v1.JsonAddress{Number: session.To}
+	recipient := mustGetRecipientFromAddress(session.To)
+	if strings.HasPrefix(recipient, "+") {
+		req.RecipientAddress = &v1.JsonAddress{Number: recipient}
 	} else {
-		// req.RecipientGroupID = args[0]
-		panic("not implemented")
+		req.RecipientGroupID = recipient
 	}
 
+	log.Printf("Sending message with signal: %+v", req)
 	resp, err := req.Submit(signaldClient)
 	if err != nil {
-		log.Printf("error sending request to signald: %v\n", err)
+		log.Printf("error sending request to signald: %+v\n", err)
 	}
-	log.Printf("Response: %v \n", resp)
+	for _, msgSent := range resp.Results {
+		log.Printf("Sent to: %s in %v ms\n", msgSent.Address.Number, msgSent.Success.Duration)
+	}
 
 	return nil
 }
