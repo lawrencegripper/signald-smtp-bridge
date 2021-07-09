@@ -10,6 +10,12 @@ Plain text emails are sent normally via signal. HTML Emails are rendered using H
 
 If you don't know what `signald` is yet best to stop and learn how that works first here: https://github.com/thefinn93/signald
 
+# Environment Variables for config
+
+- `SMTP_USERNAME`
+- `SMTP_PASSWORD`
+- `SMTP_ALLOW_ANNON` set to `TRUE` to enable anonymous access
+
 # Deploying on Kubernetes
 
 1. Open `Deployment.yaml`

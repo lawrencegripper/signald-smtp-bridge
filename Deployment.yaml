@@ -40,6 +40,11 @@ spec:
       containers:
         - image: ghcr.io/lawrencegripper/signald-smtp-bridge:latest
           name: smtp-bridge
+          env:
+            - name: SMTP_PASSWORD
+              value: testpwd
+            - name: SMTP_USERNAME
+              value: testuser
           ports:
             - containerPort: 1025
               name: smtp-server
