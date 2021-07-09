@@ -27,7 +27,7 @@ var signaldClient *signald.Signald
 
 func init() {
 	signaldClient = &signald.Signald{
-		SocketPath: "/var/run/signald/signald.sock",
+		SocketPath: "/signald/signald.sock",
 	}
 	err := signaldClient.Connect()
 	if err != nil {
@@ -185,7 +185,7 @@ func captureHtmlEmailAsPDF(session *Session) error {
 		return err
 	}
 
-	if err := ioutil.WriteFile("/var/run/signald/email.pdf", buf, 0777); err != nil {
+	if err := ioutil.WriteFile("/signald/email.pdf", buf, 0777); err != nil {
 		return err
 	}
 	return nil

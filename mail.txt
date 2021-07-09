@@ -1,9 +1,0 @@
-EHLO localhost
-AUTH PLAIN
-AHVzZXJuYW1lAHBhc3N3b3Jk
-MAIL FROM:<+440000000000@signal.bridge>
-RCPT TO:<+441111111111@signal.bridge>
-DATA
-Hey
-.
-QUIT
