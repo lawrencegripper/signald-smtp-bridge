@@ -201,10 +201,17 @@ func sendSignalMessage(session *Session) error {
 		captureHtmlEmailAsPDF(session)
 	}
 
-	signalMsg := session.Email.Subject + "\n\n" + session.Email.TextBody
+	signalMsg := session.From + "\n\n" + session.Email.Subject + "\n\n" + session.Email.TextBody
+
+	var fromUsername string
+	if strings.Contains(session.From, "@signal.bridge") {
+		fromUsername = mustGetRecipientFromAddress(session.From)
+	} else {
+		fromUsername = os.Getenv("SEND_FROM")
+	}
 
 	req := v1.SendRequest{
-		Username:    mustGetRecipientFromAddress(session.From),
+		Username:    fromUsername,
 		MessageBody: signalMsg,
 	}
 

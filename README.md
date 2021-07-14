@@ -2,7 +2,9 @@
 
 > Note: This is a pet project, just hacking for fun.
 
-This is an SMTP server which bridges to Signal Messenger. Emails can be send to it with `FROM: <SendingAccount>@signal.bridge` and `TO: <RecipientNumberOrGroupID>@signal.bridge`.
+This is an SMTP server which bridges to Signal Messenger. 
+
+Emails can be sent to it with `FROM: <SendingAccount>@signal.bridge` and `TO: <RecipientNumberOrGroupID>@signal.bridge`. If you don't control the sending email address you can set `SEND_FROM` to specify the signal username that should be used when sending messages.
 
 Plain text emails are sent normally via signal. HTML Emails are rendered using Headless Chrome and `chromedp` to a PDF and that PDF is attached to the signal message.
 
@@ -12,6 +14,7 @@ If you don't know what `signald` is yet best to stop and learn how that works fi
 
 # Environment Variables for config
 
+- `SEND_FROM` set to the signal username to send from when `@signal.bridge` email isn't used as the from address
 - `SMTP_USERNAME`
 - `SMTP_PASSWORD`
 - `SMTP_ALLOW_ANNON` set to `TRUE` to enable anonymous access
