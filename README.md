@@ -18,6 +18,7 @@ If you don't know what `signald` is yet best to stop and learn how that works fi
 - `SMTP_USERNAME`
 - `SMTP_PASSWORD`
 - `SMTP_ALLOW_ANNON` set to `TRUE` to enable anonymous access
+- `DEBUG` set to `TRUE` to see full data of incoming mail in stdout
 
 # Deploying on Kubernetes
 

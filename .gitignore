@@ -1,3 +1,4 @@
 .env
 signald-smtp-bridge
 tag.txt
+__debug_bin

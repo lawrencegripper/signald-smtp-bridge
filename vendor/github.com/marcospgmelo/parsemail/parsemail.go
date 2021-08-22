@@ -416,10 +416,10 @@ func decodeContent(content io.Reader, encoding string) (io.Reader, error) {
 		return bytes.NewReader(dd), nil
 	case "8bit":
 		return content, nil
-	case "quoted-printable":
-		return quotedprintable.NewReader(content), nil
 	case "":
 		return content, nil
+	case "quoted-printable":
+		return quotedprintable.NewReader(content), nil
 	default:
 		return nil, fmt.Errorf("unknown encoding: %s", encoding)
 	}

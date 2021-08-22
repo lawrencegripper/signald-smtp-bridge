@@ -17,6 +17,7 @@ import (
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/emersion/go-smtp"
+	"github.com/google/uuid"
 	"github.com/marcospgmelo/parsemail"
 	"gitlab.com/signald/signald-go/signald"
 	v0 "gitlab.com/signald/signald-go/signald/client-protocol/v0"
@@ -79,7 +80,9 @@ func (s *Session) Data(r io.Reader) error {
 	if b, err := ioutil.ReadAll(r); err != nil {
 		return err
 	} else {
-		log.Println("Data:", string(b))
+		if os.Getenv("DEBUG") == "TRUE" {
+			log.Println("Data:", string(b))
+		}
 		s.MessageData = string(b)
 	}
 
@@ -115,7 +118,7 @@ func main() {
 	}
 }
 
-func mustGetRecipientFromAddress(address string) string {
+func mustGetSignalUserOrGroupFromAddress(address string) string {
 	split := strings.Split(address, "@")
 	if len(split) < 2 {
 		panic("Invalid address must be 'numberOrGroupId@signal.bridge")
@@ -130,10 +133,9 @@ func parseEmail(session *Session) error { // this reads an email message
 		return err
 	}
 
-	log.Println(email.Subject)
+	log.Println("Subject: " + email.Subject)
 	log.Println(email.From)
 	log.Println(email.To)
-	log.Println(email.HTMLBody)
 
 	session.Email = &email
 
@@ -155,7 +157,7 @@ func printToPDF(urlstr string, res *[]byte) chromedp.Tasks {
 	}
 }
 
-func captureHtmlEmailAsPDF(session *Session) error {
+func captureHTMLEmailAsPDF(session *Session) (string, error) {
 	// create a test server to serve the page
 	ts := httptest.NewServer(
 		http.HandlerFunc(
@@ -185,30 +187,39 @@ func captureHtmlEmailAsPDF(session *Session) error {
 	// capture pdf
 	var buf []byte
 	if err := chromedp.Run(ctx, printToPDF(ts.URL, &buf)); err != nil {
-		return err
+		return "", err
 	}
 
-	if err := ioutil.WriteFile("/signald/email.pdf", buf, 0777); err != nil {
-		return err
+	filePath := fmt.Sprintf("/signald/%semail.pdf", uuid.New().String())
+	log.Printf("PDF using file: %q", filePath)
+	if err := ioutil.WriteFile(filePath, buf, 0777); err != nil {
+		return "", err
 	}
-	return nil
+	return filePath, nil
 }
 
 func sendSignalMessage(session *Session) error {
-	log.Printf("Converting email session to signal msg: %+v", session)
-
+	var pdfFile string
+	var err error
 	if session.Email.ContentType != "text/plain" {
-		captureHtmlEmailAsPDF(session)
+		log.Println("Converting HTML mail to pdf file")
+		pdfFile, err = captureHTMLEmailAsPDF(session)
+		if err != nil {
+			log.Println("PDF conversion failed")
+		}
 	}
 
 	signalMsg := session.From + "\n\n" + session.Email.Subject + "\n\n" + session.Email.TextBody
 
 	var fromUsername string
 	if strings.Contains(session.From, "@signal.bridge") {
-		fromUsername = mustGetRecipientFromAddress(session.From)
+		fromUsername = mustGetSignalUserOrGroupFromAddress(session.From)
 	} else {
 		fromUsername = os.Getenv("SEND_FROM")
 	}
+
+	log.Printf("Converting email session to signal msg")
+	log.Printf("Sending from account: %q", fromUsername)
 
 	req := v1.SendRequest{
 		Username:    fromUsername,
@@ -216,27 +227,33 @@ func sendSignalMessage(session *Session) error {
 	}
 
 	// check file exists
-	_, err := os.Stat("/signald/email.pdf")
+	_, err = os.Stat(pdfFile)
 	if err == nil {
 		req.Attachments = []*v0.JsonAttachment{
-			{Filename: "/signald/email.pdf"},
+			{Filename: pdfFile},
 		}
 	}
 
-	recipient := mustGetRecipientFromAddress(session.To)
+	recipient := mustGetSignalUserOrGroupFromAddress(session.To)
 	if strings.HasPrefix(recipient, "+") {
 		req.RecipientAddress = &v1.JsonAddress{Number: recipient}
+		log.Printf("Sending to user: %q", recipient)
 	} else {
 		req.RecipientGroupID = recipient
+		log.Printf("Sending to group: %q", recipient)
 	}
 
-	log.Printf("Sending message with signal: %+v", req)
 	resp, err := req.Submit(signaldClient)
 	if err != nil {
 		log.Printf("error sending request to signald: %+v\n", err)
 	}
 	for _, msgSent := range resp.Results {
 		log.Printf("Sent to: %s in %v ms\n", msgSent.Address.Number, msgSent.Success.Duration)
+	}
+
+	_, err = os.Stat(pdfFile)
+	if err == nil {
+		os.Remove(pdfFile)
 	}
 
 	return nil
