@@ -81,7 +81,7 @@ func (s *Session) Data(r io.Reader) error {
 		return err
 	} else {
 		if os.Getenv("DEBUG") == "TRUE" {
-			log.Println("Data:", string(b))
+			log.Println("DEBUG Data:", string(b))
 		}
 		s.MessageData = string(b)
 	}
@@ -241,6 +241,10 @@ func sendSignalMessage(session *Session) error {
 	} else {
 		req.RecipientGroupID = recipient
 		log.Printf("Sending to group: %q", recipient)
+	}
+
+	if os.Getenv("DEBUG") == "TRUE" {
+		log.Printf("DEBUG signal send request: %+v", req)
 	}
 
 	resp, err := req.Submit(signaldClient)
