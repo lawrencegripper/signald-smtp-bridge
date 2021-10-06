@@ -1,3 +1,5 @@
+# github.com/armon/consul-api v0.0.0-20180202201655-eb2c6b5be1b6
+## explicit
 # github.com/chromedp/cdproto v0.0.0-20210706234513-2bc298e8be7f
 ## explicit
 github.com/chromedp/cdproto
@@ -82,9 +84,14 @@ github.com/mailru/easyjson/jwriter
 # github.com/marcospgmelo/parsemail v1.3.1-0.20201020162348-38663e9311e7 => github.com/lawrencegripper/parsemail v1.3.1
 ## explicit
 github.com/marcospgmelo/parsemail
-# gitlab.com/signald/signald-go v0.0.0-20210702061511-8d38d54615e9
+# github.com/ugorji/go v1.1.4
+## explicit
+# github.com/xordataexchange/crypt v0.0.3-0.20170626215501-b2862e3d0a77
+## explicit
+# gitlab.com/signald/signald-go v0.0.0-20210930075010-25050d2f0eaf
 ## explicit
 gitlab.com/signald/signald-go/signald
+gitlab.com/signald/signald-go/signald/client-protocol
 gitlab.com/signald/signald-go/signald/client-protocol/v0
 gitlab.com/signald/signald-go/signald/client-protocol/v1
 # golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c

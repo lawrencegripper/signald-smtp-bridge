@@ -4,7 +4,6 @@ package v1
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 
 	"gitlab.com/signald/signald-go/signald"
@@ -28,7 +27,7 @@ func (r *AcceptInvitationRequest) Submit(conn *signald.Signald) (response JsonGr
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -61,11 +60,44 @@ func (r *AddLinkedDeviceRequest) Submit(conn *signald.Signald) (err error) {
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
 	return err
+
+}
+
+// Submit: add a new server to connect to. Returns the new server's UUID.
+func (r *AddServerRequest) Submit(conn *signald.Signald) (response string, err error) {
+	r.Version = "v1"
+	r.Type = "add_server"
+	if r.ID == "" {
+		r.ID = signald.GenerateID()
+	}
+	err = conn.RawRequest(r)
+	if err != nil {
+		log.Println("signald-go: error submitting request to signald")
+		return
+	}
+
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
+
+	rawResponse := <-responseChannel
+	if rawResponse.Error != nil {
+		err = mkerr(rawResponse)
+		return
+	}
+
+	err = json.Unmarshal(rawResponse.Data, &response)
+	if err != nil {
+		rawResponseJson, _ := rawResponse.Data.MarshalJSON()
+		log.Println("signald-go: error unmarshalling response from signald of type", rawResponse.Type, string(rawResponseJson))
+		return
+	}
+
+	return response, nil
 
 }
 
@@ -87,7 +119,7 @@ func (r *ApproveMembershipRequest) Submit(conn *signald.Signald) (response JsonG
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -119,7 +151,7 @@ func (r *CreateGroupRequest) Submit(conn *signald.Signald) (response JsonGroupV2
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -152,7 +184,32 @@ func (r *DeleteAccountRequest) Submit(conn *signald.Signald) (err error) {
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
+		return
+	}
+
+	return err
+
+}
+
+func (r *RemoveServerRequest) Submit(conn *signald.Signald) (err error) {
+	r.Version = "v1"
+	r.Type = "delete_server"
+	if r.ID == "" {
+		r.ID = signald.GenerateID()
+	}
+	err = conn.RawRequest(r)
+	if err != nil {
+		log.Println("signald-go: error submitting request to signald")
+		return
+	}
+
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
+
+	rawResponse := <-responseChannel
+	if rawResponse.Error != nil {
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -178,7 +235,7 @@ func (r *FinishLinkRequest) Submit(conn *signald.Signald) (response Account, err
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -211,7 +268,7 @@ func (r *GenerateLinkingURIRequest) Submit(conn *signald.Signald) (response Link
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -244,7 +301,7 @@ func (r *GetAllIdentities) Submit(conn *signald.Signald) (response AllIdentityKe
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -259,7 +316,7 @@ func (r *GetAllIdentities) Submit(conn *signald.Signald) (response AllIdentityKe
 
 }
 
-// Submit: Query the server for the latest state of a known group. If no account in signald is a member of the group (anymore), an error with error_type: 'UnknownGroupException' is returned.
+// Submit: Query the server for the latest state of a known group. If no account in signald is a member of the group (anymore), an error with error_type: 'UnknownGroupError' is returned.
 func (r *GetGroupRequest) Submit(conn *signald.Signald) (response JsonGroupV2Info, err error) {
 	r.Version = "v1"
 	r.Type = "get_group"
@@ -277,7 +334,7 @@ func (r *GetGroupRequest) Submit(conn *signald.Signald) (response JsonGroupV2Inf
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -310,7 +367,7 @@ func (r *GetIdentitiesRequest) Submit(conn *signald.Signald) (response IdentityK
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -343,7 +400,7 @@ func (r *GetLinkedDevicesRequest) Submit(conn *signald.Signald) (response Linked
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -376,7 +433,72 @@ func (r *GetProfileRequest) Submit(conn *signald.Signald) (response Profile, err
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
+		return
+	}
+
+	err = json.Unmarshal(rawResponse.Data, &response)
+	if err != nil {
+		rawResponseJson, _ := rawResponse.Data.MarshalJSON()
+		log.Println("signald-go: error unmarshalling response from signald of type", rawResponse.Type, string(rawResponseJson))
+		return
+	}
+
+	return response, nil
+
+}
+
+// Submit: Retrieves the remote config (feature flags) from the server.
+func (r *RemoteConfigRequest) Submit(conn *signald.Signald) (response RemoteConfigList, err error) {
+	r.Version = "v1"
+	r.Type = "get_remote_config"
+	if r.ID == "" {
+		r.ID = signald.GenerateID()
+	}
+	err = conn.RawRequest(r)
+	if err != nil {
+		log.Println("signald-go: error submitting request to signald")
+		return
+	}
+
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
+
+	rawResponse := <-responseChannel
+	if rawResponse.Error != nil {
+		err = mkerr(rawResponse)
+		return
+	}
+
+	err = json.Unmarshal(rawResponse.Data, &response)
+	if err != nil {
+		rawResponseJson, _ := rawResponse.Data.MarshalJSON()
+		log.Println("signald-go: error unmarshalling response from signald of type", rawResponse.Type, string(rawResponseJson))
+		return
+	}
+
+	return response, nil
+
+}
+
+func (r *GetServersRequest) Submit(conn *signald.Signald) (response ServerList, err error) {
+	r.Version = "v1"
+	r.Type = "get_servers"
+	if r.ID == "" {
+		r.ID = signald.GenerateID()
+	}
+	err = conn.RawRequest(r)
+	if err != nil {
+		log.Println("signald-go: error submitting request to signald")
+		return
+	}
+
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
+
+	rawResponse := <-responseChannel
+	if rawResponse.Error != nil {
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -409,7 +531,7 @@ func (r *GroupLinkInfoRequest) Submit(conn *signald.Signald) (response JsonGroup
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -442,7 +564,7 @@ func (r *JoinGroupRequest) Submit(conn *signald.Signald) (response JsonGroupJoin
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -474,7 +596,7 @@ func (r *LeaveGroupRequest) Submit(conn *signald.Signald) (response GroupInfo, e
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -507,7 +629,7 @@ func (r *ListAccountsRequest) Submit(conn *signald.Signald) (response AccountLis
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -539,7 +661,7 @@ func (r *ListContactsRequest) Submit(conn *signald.Signald) (response ProfileLis
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -571,7 +693,7 @@ func (r *ListGroupsRequest) Submit(conn *signald.Signald) (response GroupList, e
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -603,7 +725,7 @@ func (r *MarkReadRequest) Submit(conn *signald.Signald) (err error) {
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -629,7 +751,40 @@ func (r *ReactRequest) Submit(conn *signald.Signald) (response SendResponse, err
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
+		return
+	}
+
+	err = json.Unmarshal(rawResponse.Data, &response)
+	if err != nil {
+		rawResponseJson, _ := rawResponse.Data.MarshalJSON()
+		log.Println("signald-go: error unmarshalling response from signald of type", rawResponse.Type, string(rawResponseJson))
+		return
+	}
+
+	return response, nil
+
+}
+
+// Submit: deny a request to join a group
+func (r *RefuseMembershipRequest) Submit(conn *signald.Signald) (response JsonGroupV2Info, err error) {
+	r.Version = "v1"
+	r.Type = "refuse_membership"
+	if r.ID == "" {
+		r.ID = signald.GenerateID()
+	}
+	err = conn.RawRequest(r)
+	if err != nil {
+		log.Println("signald-go: error submitting request to signald")
+		return
+	}
+
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
+
+	rawResponse := <-responseChannel
+	if rawResponse.Error != nil {
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -662,7 +817,7 @@ func (r *RegisterRequest) Submit(conn *signald.Signald) (response Account, err e
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -695,7 +850,7 @@ func (r *RemoteDeleteRequest) Submit(conn *signald.Signald) (response SendRespon
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -728,7 +883,7 @@ func (r *RemoveLinkedDeviceRequest) Submit(conn *signald.Signald) (err error) {
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -754,7 +909,7 @@ func (r *RequestSyncRequest) Submit(conn *signald.Signald) (err error) {
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -780,7 +935,7 @@ func (r *ResetSessionRequest) Submit(conn *signald.Signald) (response SendRespon
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -795,7 +950,7 @@ func (r *ResetSessionRequest) Submit(conn *signald.Signald) (response SendRespon
 
 }
 
-// Submit: Resolve a partial JsonAddress with only a number or UUID to one with both. Anywhere that signald accepts a JsonAddress will except a partial, this is a convenience function for client authors, mostly because signald doesn't resolve all the partials it returns
+// Submit: Resolve a partial JsonAddress with only a number or UUID to one with both. Anywhere that signald accepts a JsonAddress will except a partial, this is a convenience function for client authors, mostly because signald doesn't resolve all the partials it returns.
 func (r *ResolveAddressRequest) Submit(conn *signald.Signald) (response JsonAddress, err error) {
 	r.Version = "v1"
 	r.Type = "resolve_address"
@@ -813,7 +968,7 @@ func (r *ResolveAddressRequest) Submit(conn *signald.Signald) (response JsonAddr
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -845,7 +1000,40 @@ func (r *SendRequest) Submit(conn *signald.Signald) (response SendResponse, err 
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
+		return
+	}
+
+	err = json.Unmarshal(rawResponse.Data, &response)
+	if err != nil {
+		rawResponseJson, _ := rawResponse.Data.MarshalJSON()
+		log.Println("signald-go: error unmarshalling response from signald of type", rawResponse.Type, string(rawResponseJson))
+		return
+	}
+
+	return response, nil
+
+}
+
+// Submit: send a mobilecoin payment
+func (r *SendPaymentRequest) Submit(conn *signald.Signald) (response SendResponse, err error) {
+	r.Version = "v1"
+	r.Type = "send_payment"
+	if r.ID == "" {
+		r.ID = signald.GenerateID()
+	}
+	err = conn.RawRequest(r)
+	if err != nil {
+		log.Println("signald-go: error submitting request to signald")
+		return
+	}
+
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
+
+	rawResponse := <-responseChannel
+	if rawResponse.Error != nil {
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -878,7 +1066,7 @@ func (r *SetDeviceNameRequest) Submit(conn *signald.Signald) (err error) {
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -904,7 +1092,7 @@ func (r *SetExpirationRequest) Submit(conn *signald.Signald) (response SendRespo
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -936,7 +1124,7 @@ func (r *SetProfile) Submit(conn *signald.Signald) (err error) {
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -962,7 +1150,7 @@ func (r *SubscribeRequest) Submit(conn *signald.Signald) (err error) {
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -988,7 +1176,7 @@ func (r *TrustRequest) Submit(conn *signald.Signald) (err error) {
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -1014,7 +1202,7 @@ func (r *TypingRequest) Submit(conn *signald.Signald) (err error) {
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -1040,7 +1228,7 @@ func (r *UnsubscribeRequest) Submit(conn *signald.Signald) (err error) {
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -1066,7 +1254,7 @@ func (r *UpdateContactRequest) Submit(conn *signald.Signald) (response Profile, 
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -1081,7 +1269,7 @@ func (r *UpdateContactRequest) Submit(conn *signald.Signald) (response Profile, 
 
 }
 
-// Submit: modify a group. Note that only one modification action may be preformed at once
+// Submit: modify a group. Note that only one modification action may be performed at once
 func (r *UpdateGroupRequest) Submit(conn *signald.Signald) (response GroupInfo, err error) {
 	r.Version = "v1"
 	r.Type = "update_group"
@@ -1099,7 +1287,7 @@ func (r *UpdateGroupRequest) Submit(conn *signald.Signald) (response GroupInfo, 
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -1132,7 +1320,7 @@ func (r *VerifyRequest) Submit(conn *signald.Signald) (response Account, err err
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 
@@ -1164,7 +1352,7 @@ func (r *VersionRequest) Submit(conn *signald.Signald) (response JsonVersionMess
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
-		err = fmt.Errorf("signald error: %s", string(rawResponse.Error))
+		err = mkerr(rawResponse)
 		return
 	}
 

@@ -3,13 +3,16 @@ module github.com/lawrencegripper/signald-smtp-bridge
 go 1.16
 
 require (
+	github.com/armon/consul-api v0.0.0-20180202201655-eb2c6b5be1b6 // indirect
 	github.com/chromedp/cdproto v0.0.0-20210706234513-2bc298e8be7f
 	github.com/chromedp/chromedp v0.7.3
 	github.com/emersion/go-sasl v0.0.0-20200509203442-7bfe0ed36a21
 	github.com/emersion/go-smtp v0.15.0
 	github.com/google/uuid v1.3.0
 	github.com/marcospgmelo/parsemail v1.3.1-0.20201020162348-38663e9311e7
-	gitlab.com/signald/signald-go v0.0.0-20210702061511-8d38d54615e9
+	github.com/ugorji/go v1.1.4 // indirect
+	github.com/xordataexchange/crypt v0.0.3-0.20170626215501-b2862e3d0a77 // indirect
+	gitlab.com/signald/signald-go v0.0.0-20210930075010-25050d2f0eaf
 	golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c // indirect
 )
 

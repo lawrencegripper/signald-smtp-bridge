@@ -17,8 +17,8 @@ package signald
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"math/rand"
@@ -28,12 +28,16 @@ import (
 	"strings"
 	"time"
 
+	client_protocol "gitlab.com/signald/signald-go/signald/client-protocol"
 	"gitlab.com/signald/signald-go/signald/client-protocol/v0"
 )
 
 const (
 	defaultSocketPrefix = "/var/run"
 	socketSuffix        = "/signald/signald.sock"
+
+	ProductionServerUUID = "6e2eb5a8-5706-45d0-8377-127a816411a4"
+	StagingServerUUID    = "97c17f0c-e53b-426f-8ffa-c052d4183f83"
 )
 
 var (
@@ -48,15 +52,8 @@ func init() {
 // Signald is a connection to a signald instance.
 type Signald struct {
 	socket     net.Conn
-	listeners  map[string]chan BasicResponse
+	listeners  map[string]chan client_protocol.BasicResponse
 	SocketPath string
-}
-
-type BasicResponse struct {
-	ID    string
-	Type  string
-	Error json.RawMessage
-	Data  json.RawMessage
 }
 
 type UnexpectedError struct {
@@ -88,10 +85,17 @@ func (s *Signald) Connect() error {
 }
 
 func (s *Signald) connect() error {
-	socket, err := net.Dial("unix", s.SocketPath)
+	var d net.Dialer
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	addr := net.UnixAddr{Name: s.SocketPath, Net: "unix"}
+	socket, err := d.DialContext(ctx, "unix", addr.String())
 	if err != nil {
 		return err
 	}
+
 	s.socket = socket
 	return nil
 }
@@ -143,13 +147,13 @@ func (s *Signald) RawRequest(request interface{}) error {
 	return json.NewEncoder(s.socket).Encode(request)
 }
 
-func (s *Signald) GetResponseListener(requestid string) chan BasicResponse {
+func (s *Signald) GetResponseListener(requestid string) chan client_protocol.BasicResponse {
 	if s.listeners == nil {
-		s.listeners = map[string]chan BasicResponse{}
+		s.listeners = map[string]chan client_protocol.BasicResponse{}
 	}
 	c, ok := s.listeners[requestid]
 	if !ok {
-		c = make(chan BasicResponse)
+		c = make(chan client_protocol.BasicResponse)
 		s.listeners[requestid] = c
 	}
 	return c
@@ -164,7 +168,7 @@ func (s *Signald) CloseResponseListener(requestid string) {
 	delete(s.listeners, requestid)
 }
 
-func (s *Signald) readNext() (b BasicResponse, err error) {
+func (s *Signald) readNext() (b client_protocol.BasicResponse, err error) {
 	if debugSignaldIO {
 		buffer := bytes.Buffer{}
 		err = json.NewDecoder(io.TeeReader(s.socket, &buffer)).Decode(&b)
@@ -177,11 +181,4 @@ func (s *Signald) readNext() (b BasicResponse, err error) {
 		return
 	}
 	return
-}
-
-func (b BasicResponse) GetError() error {
-	if b.Error == nil {
-		return nil
-	}
-	return fmt.Errorf("signald error: %s", string(b.Error))
 }

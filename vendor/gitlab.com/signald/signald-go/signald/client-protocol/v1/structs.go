@@ -24,6 +24,7 @@ type Account struct {
 	AccountId string       `json:"account_id,omitempty" yaml:"account_id,omitempty"` // The primary identifier on the account, included with all requests to signald for this account. Previously called 'username'
 	Address   *JsonAddress `json:"address,omitempty" yaml:"address,omitempty"`       // The address of this account
 	DeviceId  int32        `json:"device_id,omitempty" yaml:"device_id,omitempty"`   // The Signal device ID. Official Signal mobile clients (iPhone and Android) have device ID = 1, while linked devices such as Signal Desktop or Signal iPad have higher device IDs.
+	Pending   bool         `json:"pending,omitempty" yaml:"pending,omitempty"`       // indicates the account has not completed registration
 }
 
 type AccountList struct {
@@ -35,6 +36,12 @@ type AddLinkedDeviceRequest struct {
 	Request
 	Account string `json:"account,omitempty" yaml:"account,omitempty"` // The account to interact with
 	Uri     string `json:"uri,omitempty" yaml:"uri,omitempty"`         // the tsdevice:/ uri provided (typically in qr code form) by the new device
+}
+
+// AddServerRequest: add a new server to connect to. Returns the new server's UUID.
+type AddServerRequest struct {
+	Request
+	Server *Server `json:"server,omitempty" yaml:"server,omitempty"`
 }
 
 type AllIdentityKeyList struct {
@@ -117,6 +124,7 @@ type FinishLinkRequest struct {
 // GenerateLinkingURIRequest: Generate a linking URI. Typically this is QR encoded and scanned by the primary device. Submit the returned session_id with a finish_link request.
 type GenerateLinkingURIRequest struct {
 	Request
+	Server string `json:"server,omitempty" yaml:"server,omitempty"` // The identifier of the server to use. Leave blank for default (usually Signal production servers but configurable at build time)
 }
 
 // GetAllIdentities: get all known identity keys
@@ -125,7 +133,7 @@ type GetAllIdentities struct {
 	Account string `json:"account,omitempty" yaml:"account,omitempty"` // The account to interact with
 }
 
-// GetGroupRequest: Query the server for the latest state of a known group. If no account in signald is a member of the group (anymore), an error with error_type: 'UnknownGroupException' is returned.
+// GetGroupRequest: Query the server for the latest state of a known group. If no account in signald is a member of the group (anymore), an error with error_type: 'UnknownGroupError' is returned.
 type GetGroupRequest struct {
 	Request
 	Account  string `json:"account,omitempty" yaml:"account,omitempty"` // The account to interact with
@@ -152,6 +160,10 @@ type GetProfileRequest struct {
 	Account string       `json:"account,omitempty" yaml:"account,omitempty"` // the signald account to use
 	Address *JsonAddress `json:"address,omitempty" yaml:"address,omitempty"` // the address to look up
 	Async   bool         `json:"async,omitempty" yaml:"async,omitempty"`     // if true, return results from local store immediately, refreshing from server in the background if needed. if false (default), block until profile can be retrieved from server
+}
+
+type GetServersRequest struct {
+	Request
 }
 
 // GroupAccessControl: group access control settings. Options for each controlled action are: UNKNOWN, ANY, MEMBER, ADMINISTRATOR, UNSATISFIABLE and UNRECOGNIZED
@@ -243,30 +255,47 @@ type JsonAddress struct {
 	UUID   string `json:"uuid,omitempty" yaml:"uuid,omitempty"` // A UUID, the unique identifier for a particular Signal account.
 }
 
+// JsonAttachment: represents a file attached to a message. When seding, only `filename` is required.
+type JsonAttachment struct {
+	Blurhash       string `json:"blurhash,omitempty" yaml:"blurhash,omitempty"`
+	Caption        string `json:"caption,omitempty" yaml:"caption,omitempty"`
+	ContentType    string `json:"contentType,omitempty" yaml:"contentType,omitempty"`
+	CustomFilename string `json:"customFilename,omitempty" yaml:"customFilename,omitempty"` // the original name of the file
+	Digest         string `json:"digest,omitempty" yaml:"digest,omitempty"`
+	Filename       string `json:"filename,omitempty" yaml:"filename,omitempty"` // when sending, the path to the local file to upload
+	Height         int32  `json:"height,omitempty" yaml:"height,omitempty"`
+	ID             string `json:"id,omitempty" yaml:"id,omitempty"`
+	Key            string `json:"key,omitempty" yaml:"key,omitempty"`
+	Size           int32  `json:"size,omitempty" yaml:"size,omitempty"`
+	StoredFilename string `json:"storedFilename,omitempty" yaml:"storedFilename,omitempty"` // when receiving, the path that file has been downloaded to
+	VoiceNote      bool   `json:"voiceNote,omitempty" yaml:"voiceNote,omitempty"`
+	Width          int32  `json:"width,omitempty" yaml:"width,omitempty"`
+}
+
 type JsonBlockedListMessage struct {
 	Addresses []*JsonAddress `json:"addresses,omitempty" yaml:"addresses,omitempty"`
 	GroupIds  []string       `json:"groupIds,omitempty" yaml:"groupIds,omitempty"`
 }
 
 type JsonDataMessage struct {
-	Attachments      []*v0.JsonAttachment `json:"attachments,omitempty" yaml:"attachments,omitempty"` // files attached to the incoming message
-	Body             string               `json:"body,omitempty" yaml:"body,omitempty"`               // the text body of the incoming message.
-	Contacts         []*v0.SharedContact  `json:"contacts,omitempty" yaml:"contacts,omitempty"`       // if the incoming message has a shared contact, the contact's information will be here
-	EndSession       bool                 `json:"endSession,omitempty" yaml:"endSession,omitempty"`
-	ExpiresInSeconds int32                `json:"expiresInSeconds,omitempty" yaml:"expiresInSeconds,omitempty"`   // the expiry timer on the incoming message. Clients should delete records of the message within this number of seconds
-	Group            *JsonGroupInfo       `json:"group,omitempty" yaml:"group,omitempty"`                         // if the incoming message was sent to a v1 group, information about that group will be here
-	GroupV2          *JsonGroupV2Info     `json:"groupV2,omitempty" yaml:"groupV2,omitempty"`                     // if the incoming message was sent to a v2 group, basic identifying information about that group will be here. If group information changes, JsonGroupV2Info.revision is incremented. If the group revision is higher than previously seen, a client can retrieve the group information by calling get_group.
-	GroupCallUpdate  string               `json:"group_call_update,omitempty" yaml:"group_call_update,omitempty"` // the eraId string from a group call message update
-	Mentions         []*JsonMention       `json:"mentions,omitempty" yaml:"mentions,omitempty"`                   // list of mentions in the message
-	Payment          *Payment             `json:"payment,omitempty" yaml:"payment,omitempty"`                     // details about the MobileCoin payment attached to the message, if present
-	Previews         []*v0.JsonPreview    `json:"previews,omitempty" yaml:"previews,omitempty"`                   // if the incoming message has a link preview, information about that preview will be here
-	ProfileKeyUpdate bool                 `json:"profileKeyUpdate,omitempty" yaml:"profileKeyUpdate,omitempty"`
-	Quote            *JsonQuote           `json:"quote,omitempty" yaml:"quote,omitempty"`               // if the incoming message is a quote or reply to another message, this will contain information about that message
-	Reaction         *JsonReaction        `json:"reaction,omitempty" yaml:"reaction,omitempty"`         // if the message adds or removes a reaction to another message, this will indicate what change is being made
-	RemoteDelete     *RemoteDelete        `json:"remoteDelete,omitempty" yaml:"remoteDelete,omitempty"` // if the inbound message is deleting a previously sent message, indicates which message should be deleted
-	Sticker          *v0.JsonSticker      `json:"sticker,omitempty" yaml:"sticker,omitempty"`           // if the incoming message is a sticker, information about the sicker will be here
-	Timestamp        int64                `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`       // the timestamp that the message was sent at, according to the sender's device. This is used to uniquely identify this message for things like reactions and quotes.
-	ViewOnce         bool                 `json:"viewOnce,omitempty" yaml:"viewOnce,omitempty"`         // indicates the message is a view once message. View once messages typically include no body and a single image attachment. Official Signal clients will prevent the user from saving the image, and once the user has viewed the image once they will destroy the image.
+	Attachments      []*JsonAttachment   `json:"attachments,omitempty" yaml:"attachments,omitempty"` // files attached to the incoming message
+	Body             string              `json:"body,omitempty" yaml:"body,omitempty"`               // the text body of the incoming message.
+	Contacts         []*v0.SharedContact `json:"contacts,omitempty" yaml:"contacts,omitempty"`       // if the incoming message has a shared contact, the contact's information will be here
+	EndSession       bool                `json:"endSession,omitempty" yaml:"endSession,omitempty"`
+	ExpiresInSeconds int32               `json:"expiresInSeconds,omitempty" yaml:"expiresInSeconds,omitempty"`   // the expiry timer on the incoming message. Clients should delete records of the message within this number of seconds
+	Group            *JsonGroupInfo      `json:"group,omitempty" yaml:"group,omitempty"`                         // if the incoming message was sent to a v1 group, information about that group will be here
+	GroupV2          *JsonGroupV2Info    `json:"groupV2,omitempty" yaml:"groupV2,omitempty"`                     // if the incoming message was sent to a v2 group, basic identifying information about that group will be here. If group information changes, JsonGroupV2Info.revision is incremented. If the group revision is higher than previously seen, a client can retrieve the group information by calling get_group.
+	GroupCallUpdate  string              `json:"group_call_update,omitempty" yaml:"group_call_update,omitempty"` // the eraId string from a group call message update
+	Mentions         []*JsonMention      `json:"mentions,omitempty" yaml:"mentions,omitempty"`                   // list of mentions in the message
+	Payment          *Payment            `json:"payment,omitempty" yaml:"payment,omitempty"`                     // details about the MobileCoin payment attached to the message, if present
+	Previews         []*JsonPreview      `json:"previews,omitempty" yaml:"previews,omitempty"`                   // if the incoming message has a link preview, information about that preview will be here
+	ProfileKeyUpdate bool                `json:"profileKeyUpdate,omitempty" yaml:"profileKeyUpdate,omitempty"`
+	Quote            *JsonQuote          `json:"quote,omitempty" yaml:"quote,omitempty"`               // if the incoming message is a quote or reply to another message, this will contain information about that message
+	Reaction         *JsonReaction       `json:"reaction,omitempty" yaml:"reaction,omitempty"`         // if the message adds or removes a reaction to another message, this will indicate what change is being made
+	RemoteDelete     *RemoteDelete       `json:"remoteDelete,omitempty" yaml:"remoteDelete,omitempty"` // if the inbound message is deleting a previously sent message, indicates which message should be deleted
+	Sticker          *v0.JsonSticker     `json:"sticker,omitempty" yaml:"sticker,omitempty"`           // if the incoming message is a sticker, information about the sicker will be here
+	Timestamp        int64               `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`       // the timestamp that the message was sent at, according to the sender's device. This is used to uniquely identify this message for things like reactions and quotes.
+	ViewOnce         bool                `json:"viewOnce,omitempty" yaml:"viewOnce,omitempty"`         // indicates the message is a view once message. View once messages typically include no body and a single image attachment. Official Signal clients will prevent the user from saving the image, and once the user has viewed the image once they will destroy the image.
 }
 
 // JsonGroupInfo: information about a legacy group
@@ -279,17 +308,19 @@ type JsonGroupInfo struct {
 }
 
 type JsonGroupJoinInfo struct {
-	AddFromInviteLink    int32  `json:"addFromInviteLink,omitempty" yaml:"addFromInviteLink,omitempty"`
+	AddFromInviteLink    int32  `json:"addFromInviteLink,omitempty" yaml:"addFromInviteLink,omitempty"` // The access level required in order to join the group from the invite link, as an AccessControl.AccessRequired enum from the upstream Signal groups.proto file. This is UNSATISFIABLE (4) when the group link is disabled; ADMINISTRATOR (3) when the group link is enabled, but an administrator must approve new members; and ANY (1) when the group link is enabled and no approval is required. See theGroupAccessControl structure and the upstream enum ordinals.
+	Description          string `json:"description,omitempty" yaml:"description,omitempty"`
 	GroupID              string `json:"groupID,omitempty" yaml:"groupID,omitempty"`
 	MemberCount          int32  `json:"memberCount,omitempty" yaml:"memberCount,omitempty"`
-	PendingAdminApproval bool   `json:"pendingAdminApproval,omitempty" yaml:"pendingAdminApproval,omitempty"`
-	Revision             int32  `json:"revision,omitempty" yaml:"revision,omitempty"`
+	PendingAdminApproval bool   `json:"pendingAdminApproval,omitempty" yaml:"pendingAdminApproval,omitempty"` // Whether the account is waiting for admin approval in order to be added to the group.
+	Revision             int32  `json:"revision,omitempty" yaml:"revision,omitempty"`                         // The Group V2 revision. This is incremented by clients whenever they update group information, and it is often used by clients to determine if the local group state is out-of-date with the server's revision.
 	Title                string `json:"title,omitempty" yaml:"title,omitempty"`
 }
 
 // JsonGroupV2Info: Information about a Signal group
 type JsonGroupV2Info struct {
 	AccessControl       *GroupAccessControl `json:"accessControl,omitempty" yaml:"accessControl,omitempty"` // current access control settings for this group
+	Announcements       string              `json:"announcements,omitempty" yaml:"announcements,omitempty"` // indicates if the group is an announcements group. Only admins are allowed to send messages to announcements groups. Options are UNKNOWN, ENABLED or DISABLED
 	Avatar              string              `json:"avatar,omitempty" yaml:"avatar,omitempty"`               // path to the group's avatar on local disk, if available
 	Description         string              `json:"description,omitempty" yaml:"description,omitempty"`
 	ID                  string              `json:"id,omitempty" yaml:"id,omitempty"`
@@ -337,6 +368,15 @@ type JsonMessageRequestResponseMessage struct {
 	Type    string       `json:"type,omitempty" yaml:"type,omitempty"`
 }
 
+// JsonPreview: metadata about one of the links in a message
+type JsonPreview struct {
+	Attachment  *JsonAttachment `json:"attachment,omitempty" yaml:"attachment,omitempty"` // an optional image file attached to the preview
+	Date        int64           `json:"date,omitempty" yaml:"date,omitempty"`
+	Description string          `json:"description,omitempty" yaml:"description,omitempty"`
+	Title       string          `json:"title,omitempty" yaml:"title,omitempty"`
+	Url         string          `json:"url,omitempty" yaml:"url,omitempty"`
+}
+
 // JsonQuote: A quote is a reply to a previous message. ID is the sent time of the message being replied to
 type JsonQuote struct {
 	Attachments []*v0.JsonQuotedAttachment `json:"attachments,omitempty" yaml:"attachments,omitempty"` // list of files attached to the quoted message
@@ -362,7 +402,7 @@ type JsonSendMessageResult struct {
 	Address             *JsonAddress `json:"address,omitempty" yaml:"address,omitempty"`
 	IdentityFailure     string       `json:"identityFailure,omitempty" yaml:"identityFailure,omitempty"`
 	NetworkFailure      bool         `json:"networkFailure,omitempty" yaml:"networkFailure,omitempty"`
-	Success             *v0.Success  `json:"success,omitempty" yaml:"success,omitempty"`
+	Success             *SendSuccess `json:"success,omitempty" yaml:"success,omitempty"`
 	UnregisteredFailure bool         `json:"unregisteredFailure,omitempty" yaml:"unregisteredFailure,omitempty"`
 }
 
@@ -378,10 +418,10 @@ type JsonSentTranscriptMessage struct {
 type JsonSyncMessage struct {
 	BlockedList            *JsonBlockedListMessage               `json:"blockedList,omitempty" yaml:"blockedList,omitempty"`
 	Configuration          *v0.ConfigurationMessage              `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-	Contacts               *v0.JsonAttachment                    `json:"contacts,omitempty" yaml:"contacts,omitempty"`
+	Contacts               *JsonAttachment                       `json:"contacts,omitempty" yaml:"contacts,omitempty"`
 	ContactsComplete       bool                                  `json:"contactsComplete,omitempty" yaml:"contactsComplete,omitempty"`
 	FetchType              string                                `json:"fetchType,omitempty" yaml:"fetchType,omitempty"`
-	Groups                 *v0.JsonAttachment                    `json:"groups,omitempty" yaml:"groups,omitempty"`
+	Groups                 *JsonAttachment                       `json:"groups,omitempty" yaml:"groups,omitempty"`
 	MessageRequestResponse *JsonMessageRequestResponseMessage    `json:"messageRequestResponse,omitempty" yaml:"messageRequestResponse,omitempty"`
 	ReadMessages           []*JsonReadMessage                    `json:"readMessages,omitempty" yaml:"readMessages,omitempty"`
 	Request                string                                `json:"request,omitempty" yaml:"request,omitempty"`
@@ -469,16 +509,17 @@ type Payment struct {
 
 // Profile: Information about a Signal user
 type Profile struct {
-	About          string        `json:"about,omitempty" yaml:"about,omitempty"`
-	Address        *JsonAddress  `json:"address,omitempty" yaml:"address,omitempty"`
-	Avatar         string        `json:"avatar,omitempty" yaml:"avatar,omitempty"` // path to avatar on local disk
-	Capabilities   *Capabilities `json:"capabilities,omitempty" yaml:"capabilities,omitempty"`
-	Color          string        `json:"color,omitempty" yaml:"color,omitempty"` // color of the chat with this user
-	Emoji          string        `json:"emoji,omitempty" yaml:"emoji,omitempty"`
-	ExpirationTime int32         `json:"expiration_time,omitempty" yaml:"expiration_time,omitempty"`
-	InboxPosition  int32         `json:"inbox_position,omitempty" yaml:"inbox_position,omitempty"`
-	Name           string        `json:"name,omitempty" yaml:"name,omitempty"`                 // The user's name from local contact names if available, or if not in contact list their Signal profile name
-	ProfileName    string        `json:"profile_name,omitempty" yaml:"profile_name,omitempty"` // The user's Signal profile name
+	About             string        `json:"about,omitempty" yaml:"about,omitempty"`
+	Address           *JsonAddress  `json:"address,omitempty" yaml:"address,omitempty"`
+	Avatar            string        `json:"avatar,omitempty" yaml:"avatar,omitempty"` // path to avatar on local disk
+	Capabilities      *Capabilities `json:"capabilities,omitempty" yaml:"capabilities,omitempty"`
+	Color             string        `json:"color,omitempty" yaml:"color,omitempty"` // color of the chat with this user
+	Emoji             string        `json:"emoji,omitempty" yaml:"emoji,omitempty"`
+	ExpirationTime    int32         `json:"expiration_time,omitempty" yaml:"expiration_time,omitempty"`
+	InboxPosition     int32         `json:"inbox_position,omitempty" yaml:"inbox_position,omitempty"`
+	MobilecoinAddress string        `json:"mobilecoin_address,omitempty" yaml:"mobilecoin_address,omitempty"` // *base64-encoded* mobilecoin address. Note that this is not the traditional MobileCoin address encoding. Clients are responsible for converting between MobileCoin's custom base58 on the user-facing side and base64 encoding on the signald side. If unset, null or an empty string, will empty the profile payment address
+	Name              string        `json:"name,omitempty" yaml:"name,omitempty"`                             // The user's name from local contact names if available, or if not in contact list their Signal profile name
+	ProfileName       string        `json:"profile_name,omitempty" yaml:"profile_name,omitempty"`             // The user's Signal profile name
 }
 
 type ProfileList struct {
@@ -501,12 +542,37 @@ type ReceiptMessage struct {
 	When       int64   `json:"when,omitempty" yaml:"when,omitempty"`
 }
 
+// RefuseMembershipRequest: deny a request to join a group
+type RefuseMembershipRequest struct {
+	Request
+	Account string         `json:"account,omitempty" yaml:"account,omitempty"` // The account to interact with
+	GroupId string         `json:"group_id,omitempty" yaml:"group_id,omitempty"`
+	Members []*JsonAddress `json:"members,omitempty" yaml:"members,omitempty"` // list of requesting members to refuse
+}
+
 // RegisterRequest: begin the account registration process by requesting a phone number verification code. when the code is received, submit it with a verify request
 type RegisterRequest struct {
 	Request
 	Account string `json:"account,omitempty" yaml:"account,omitempty"` // the e164 phone number to register with
 	Captcha string `json:"captcha,omitempty" yaml:"captcha,omitempty"` // See https://signald.org/articles/captcha/
+	Server  string `json:"server,omitempty" yaml:"server,omitempty"`   // The identifier of the server to use. Leave blank for default (usually Signal production servers but configurable at build time)
 	Voice   bool   `json:"voice,omitempty" yaml:"voice,omitempty"`     // set to true to request a voice call instead of an SMS for verification
+}
+
+// RemoteConfig: A remote config (feature flag) entry.
+type RemoteConfig struct {
+	Name  string `json:"name,omitempty" yaml:"name,omitempty"`   // The name of this remote config entry. These names may be prefixed with the platform type ("android.", "ios.", "desktop.", etc.) Typically, clients only handle the relevant configs for its platform, hardcoding the names it cares about handling and ignoring the rest.
+	Value string `json:"value,omitempty" yaml:"value,omitempty"` // The value for this remote config entry. Even though this is a string, it could be a boolean as a string, an integer/long value, a comma-delimited list, etc. Clients usually consume this by hardcoding the feature flagsit should track in the app and assuming that the server will send the type that the client expects. If an unexpected type occurs, it falls back to a default value.
+}
+
+type RemoteConfigList struct {
+	Config []*RemoteConfig `json:"config,omitempty" yaml:"config,omitempty"`
+}
+
+// RemoteConfigRequest: Retrieves the remote config (feature flags) from the server.
+type RemoteConfigRequest struct {
+	Request
+	Account string `json:"account,omitempty" yaml:"account,omitempty"` // The account to use to retrieve the remote config
 }
 
 type RemoteDelete struct {
@@ -529,6 +595,11 @@ type RemoveLinkedDeviceRequest struct {
 	DeviceId int64  `json:"deviceId,omitempty" yaml:"deviceId,omitempty"` // the ID of the device to unlink
 }
 
+type RemoveServerRequest struct {
+	Request
+	UUID string `json:"uuid,omitempty" yaml:"uuid,omitempty"`
+}
+
 // RequestSyncRequest: Request other devices on the account send us their group list, syncable config and contact list.
 type RequestSyncRequest struct {
 	Request
@@ -547,11 +618,20 @@ type ResetSessionRequest struct {
 	Timestamp int64        `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
 }
 
-// ResolveAddressRequest: Resolve a partial JsonAddress with only a number or UUID to one with both. Anywhere that signald accepts a JsonAddress will except a partial, this is a convenience function for client authors, mostly because signald doesn't resolve all the partials it returns
+// ResolveAddressRequest: Resolve a partial JsonAddress with only a number or UUID to one with both. Anywhere that signald accepts a JsonAddress will except a partial, this is a convenience function for client authors, mostly because signald doesn't resolve all the partials it returns.
 type ResolveAddressRequest struct {
 	Request
 	Account string       `json:"account,omitempty" yaml:"account,omitempty"` // The signal account to use
 	Partial *JsonAddress `json:"partial,omitempty" yaml:"partial,omitempty"` // The partial address, missing fields
+}
+
+// SendPaymentRequest: send a mobilecoin payment
+type SendPaymentRequest struct {
+	Request
+	Account string       `json:"account,omitempty" yaml:"account,omitempty"` // the account to use
+	Address *JsonAddress `json:"address,omitempty" yaml:"address,omitempty"` // the address to send the payment message to
+	Payment *Payment     `json:"payment,omitempty" yaml:"payment,omitempty"`
+	When    int64        `json:"when,omitempty" yaml:"when,omitempty"`
 }
 
 type SendRequest struct {
@@ -559,6 +639,7 @@ type SendRequest struct {
 	Attachments      []*v0.JsonAttachment `json:"attachments,omitempty" yaml:"attachments,omitempty"`
 	Mentions         []*JsonMention       `json:"mentions,omitempty" yaml:"mentions,omitempty"`
 	MessageBody      string               `json:"messageBody,omitempty" yaml:"messageBody,omitempty"`
+	Previews         []*JsonPreview       `json:"previews,omitempty" yaml:"previews,omitempty"`
 	Quote            *JsonQuote           `json:"quote,omitempty" yaml:"quote,omitempty"`
 	RecipientAddress *JsonAddress         `json:"recipientAddress,omitempty" yaml:"recipientAddress,omitempty"`
 	RecipientGroupID string               `json:"recipientGroupId,omitempty" yaml:"recipientGroupId,omitempty"`
@@ -569,6 +650,41 @@ type SendRequest struct {
 type SendResponse struct {
 	Results   []*JsonSendMessageResult `json:"results,omitempty" yaml:"results,omitempty"`
 	Timestamp int64                    `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
+}
+
+type SendSuccess struct {
+	Devices      []int32 `json:"devices,omitempty" yaml:"devices,omitempty"`
+	Duration     int64   `json:"duration,omitempty" yaml:"duration,omitempty"`
+	NeedsSync    bool    `json:"needsSync,omitempty" yaml:"needsSync,omitempty"`
+	Unidentified bool    `json:"unidentified,omitempty" yaml:"unidentified,omitempty"`
+}
+
+// Server: a Signal server
+type Server struct {
+	Ca                     string       `json:"ca,omitempty" yaml:"ca,omitempty"` // base64 encoded trust store, password must be 'whisper'
+	CdnUrls                []*ServerCDN `json:"cdn_urls,omitempty" yaml:"cdn_urls,omitempty"`
+	CdsMrenclave           string       `json:"cds_mrenclave,omitempty" yaml:"cds_mrenclave,omitempty"`
+	ContactDiscoveryUrl    string       `json:"contact_discovery_url,omitempty" yaml:"contact_discovery_url,omitempty"`
+	IasCa                  string       `json:"ias_ca,omitempty" yaml:"ias_ca,omitempty"` // base64 encoded trust store, password must be 'whisper'
+	KeyBackupMrenclave     string       `json:"key_backup_mrenclave,omitempty" yaml:"key_backup_mrenclave,omitempty"`
+	KeyBackupServiceId     string       `json:"key_backup_service_id,omitempty" yaml:"key_backup_service_id,omitempty"` // base64 encoded
+	KeyBackupServiceName   string       `json:"key_backup_service_name,omitempty" yaml:"key_backup_service_name,omitempty"`
+	KeyBackupUrl           string       `json:"key_backup_url,omitempty" yaml:"key_backup_url,omitempty"`
+	Proxy                  string       `json:"proxy,omitempty" yaml:"proxy,omitempty"`
+	ServiceUrl             string       `json:"service_url,omitempty" yaml:"service_url,omitempty"`
+	StorageUrl             string       `json:"storage_url,omitempty" yaml:"storage_url,omitempty"`
+	UnidentifiedSenderRoot string       `json:"unidentified_sender_root,omitempty" yaml:"unidentified_sender_root,omitempty"` // base64 encoded
+	UUID                   string       `json:"uuid,omitempty" yaml:"uuid,omitempty"`                                         // A unique identifier for the server, referenced when adding accounts. Must be a valid UUID. Will be generated if not specified when creating.
+	ZkParam                string       `json:"zk_param,omitempty" yaml:"zk_param,omitempty"`                                 // base64 encoded ZKGROUP_SERVER_PUBLIC_PARAMS value
+}
+
+type ServerCDN struct {
+	Number int32  `json:"number,omitempty" yaml:"number,omitempty"`
+	Url    string `json:"url,omitempty" yaml:"url,omitempty"`
+}
+
+type ServerList struct {
+	Servers []*Server `json:"servers,omitempty" yaml:"servers,omitempty"`
 }
 
 // SetDeviceNameRequest: set this device's name. This will show up on the mobile device on the same account under
@@ -589,11 +705,12 @@ type SetExpirationRequest struct {
 
 type SetProfile struct {
 	Request
-	About      string `json:"about,omitempty" yaml:"about,omitempty"`
-	Account    string `json:"account,omitempty" yaml:"account,omitempty"`       // The phone number of the account to use
-	AvatarFile string `json:"avatarFile,omitempty" yaml:"avatarFile,omitempty"` // Path to new profile avatar file, if the avatar should be updated
-	Emoji      string `json:"emoji,omitempty" yaml:"emoji,omitempty"`
-	Name       string `json:"name,omitempty" yaml:"name,omitempty"` // New profile name. Set to empty string for no profile name
+	About             string `json:"about,omitempty" yaml:"about,omitempty"`                           // an optional about string. If unset, null or an empty string will unset profile about field
+	Account           string `json:"account,omitempty" yaml:"account,omitempty"`                       // The phone number of the account to use
+	AvatarFile        string `json:"avatarFile,omitempty" yaml:"avatarFile,omitempty"`                 // Path to new profile avatar file. If unset or null, unset the profile avatar
+	Emoji             string `json:"emoji,omitempty" yaml:"emoji,omitempty"`                           // an optional single emoji character. If unset, null or an empty string will unset profile emoji
+	MobilecoinAddress string `json:"mobilecoin_address,omitempty" yaml:"mobilecoin_address,omitempty"` // an optional *base64-encoded* MobileCoin address to set in the profile. Note that this is not the traditional MobileCoin address encoding, which is custom. Clients are responsible for converting between MobileCoin's custom base58 on the user-facing side and base64 encoding on the signald side. If unset, null or an empty string, will empty the profile payment address
+	Name              string `json:"name,omitempty" yaml:"name,omitempty"`                             // New profile name. Set to empty string for no profile name
 }
 
 // SubscribeRequest: receive incoming messages. After making a subscribe request, incoming messages will be sent to the client encoded as ClientMessageWrapper. Send an unsubscribe request or disconnect from the socket to stop receiving messages.
@@ -644,13 +761,15 @@ type UpdateContactRequest struct {
 	Name          string       `json:"name,omitempty" yaml:"name,omitempty"`
 }
 
-// UpdateGroupRequest: modify a group. Note that only one modification action may be preformed at once
+// UpdateGroupRequest: modify a group. Note that only one modification action may be performed at once
 type UpdateGroupRequest struct {
 	Request
 	Account             string              `json:"account,omitempty" yaml:"account,omitempty"` // The identifier of the account to interact with
 	AddMembers          []*JsonAddress      `json:"addMembers,omitempty" yaml:"addMembers,omitempty"`
+	Announcements       string              `json:"announcements,omitempty" yaml:"announcements,omitempty"` // ENABLED to only allow admins to post messages, DISABLED to allow anyone to post
 	Avatar              string              `json:"avatar,omitempty" yaml:"avatar,omitempty"`
-	GroupID             string              `json:"groupID,omitempty" yaml:"groupID,omitempty"` // the ID of the group to update
+	Description         string              `json:"description,omitempty" yaml:"description,omitempty"` // A new group description. Set to empty string to remove an existing description.
+	GroupID             string              `json:"groupID,omitempty" yaml:"groupID,omitempty"`         // the ID of the group to update
 	RemoveMembers       []*JsonAddress      `json:"removeMembers,omitempty" yaml:"removeMembers,omitempty"`
 	ResetLink           bool                `json:"resetLink,omitempty" yaml:"resetLink,omitempty"` // regenerate the group link password, invalidating the old one
 	Title               string              `json:"title,omitempty" yaml:"title,omitempty"`

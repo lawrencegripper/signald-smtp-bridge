@@ -158,7 +158,7 @@ type JsonMessageEnvelope struct {
 	HasLegacyMessage         bool                `json:"hasLegacyMessage,omitempty" yaml:"hasLegacyMessage,omitempty"`
 	IsUnidentifiedSender     bool                `json:"isUnidentifiedSender,omitempty" yaml:"isUnidentifiedSender,omitempty"`
 	Receipt                  *JsonReceiptMessage `json:"receipt,omitempty" yaml:"receipt,omitempty"`
-	Relay                    string              `json:"relay,omitempty" yaml:"relay,omitempty"`
+	Relay                    string              `json:"relay,omitempty" yaml:"relay,omitempty"` // this field is no longer available and will never be populated
 	ServerDeliveredTimestamp int64               `json:"serverDeliveredTimestamp,omitempty" yaml:"serverDeliveredTimestamp,omitempty"`
 	ServerTimestamp          int64               `json:"serverTimestamp,omitempty" yaml:"serverTimestamp,omitempty"`
 	Source                   *JsonAddress        `json:"source,omitempty" yaml:"source,omitempty"`
@@ -228,6 +228,7 @@ type JsonSentTranscriptMessage struct {
 
 type JsonSticker struct {
 	Attachment *JsonAttachment `json:"attachment,omitempty" yaml:"attachment,omitempty"`
+	Image      string          `json:"image,omitempty" yaml:"image,omitempty"`
 	PackID     string          `json:"packID,omitempty" yaml:"packID,omitempty"`
 	PackKey    string          `json:"packKey,omitempty" yaml:"packKey,omitempty"`
 	StickerID  int32           `json:"stickerID,omitempty" yaml:"stickerID,omitempty"`
@@ -304,12 +305,6 @@ type SharedContact struct {
 	Name         *Name     `json:"name,omitempty" yaml:"name,omitempty"`
 	Organization *Optional `json:"organization,omitempty" yaml:"organization,omitempty"`
 	Phone        *Optional `json:"phone,omitempty" yaml:"phone,omitempty"`
-}
-
-type Success struct {
-	Duration     int64 `json:"duration,omitempty" yaml:"duration,omitempty"`
-	NeedsSync    bool  `json:"needsSync,omitempty" yaml:"needsSync,omitempty"`
-	Unidentified bool  `json:"unidentified,omitempty" yaml:"unidentified,omitempty"`
 }
 
 type Type struct {
