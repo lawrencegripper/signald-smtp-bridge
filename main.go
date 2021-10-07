@@ -249,7 +249,8 @@ func sendSignalMessage(session *Session) error {
 
 	resp, err := req.Submit(signaldClient)
 	if err != nil {
-		log.Printf("error sending request to signald: %+v\n", err)
+		log.Printf("crashing -> error sending request to signald: %+v\n", err)
+		os.Exit(1)
 	}
 	for _, msgSent := range resp.Results {
 		log.Printf("Sent to: %s in %v ms\n", msgSent.Address.Number, msgSent.Success.Duration)
