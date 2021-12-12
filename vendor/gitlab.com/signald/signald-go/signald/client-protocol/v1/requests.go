@@ -1132,6 +1132,31 @@ func (r *SetProfile) Submit(conn *signald.Signald) (err error) {
 
 }
 
+func (r *SubmitChallengeRequest) Submit(conn *signald.Signald) (err error) {
+	r.Version = "v1"
+	r.Type = "submit_challenge"
+	if r.ID == "" {
+		r.ID = signald.GenerateID()
+	}
+	err = conn.RawRequest(r)
+	if err != nil {
+		log.Println("signald-go: error submitting request to signald")
+		return
+	}
+
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
+
+	rawResponse := <-responseChannel
+	if rawResponse.Error != nil {
+		err = mkerr(rawResponse)
+		return
+	}
+
+	return err
+
+}
+
 // Submit: receive incoming messages. After making a subscribe request, incoming messages will be sent to the client encoded as ClientMessageWrapper. Send an unsubscribe request or disconnect from the socket to stop receiving messages.
 func (r *SubscribeRequest) Submit(conn *signald.Signald) (err error) {
 	r.Version = "v1"

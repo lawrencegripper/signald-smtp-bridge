@@ -39,6 +39,13 @@ func mkerr(response client_protocol.BasicResponse) error {
 			return err
 		}
 		return result
+	case "DuplicateMessageError":
+		result := DuplicateMessageError{}
+		err := json.Unmarshal(response.Error, &result)
+		if err != nil {
+			return err
+		}
+		return result
 	case "FingerprintVersionMismatchError":
 		result := FingerprintVersionMismatchError{}
 		err := json.Unmarshal(response.Error, &result)
@@ -179,6 +186,27 @@ func mkerr(response client_protocol.BasicResponse) error {
 			return err
 		}
 		return result
+	case "ProofRequiredError":
+		result := ProofRequiredError{}
+		err := json.Unmarshal(response.Error, &result)
+		if err != nil {
+			return err
+		}
+		return result
+	case "ProtocolInvalidMessageError":
+		result := ProtocolInvalidMessageError{}
+		err := json.Unmarshal(response.Error, &result)
+		if err != nil {
+			return err
+		}
+		return result
+	case "RateLimitError":
+		result := RateLimitError{}
+		err := json.Unmarshal(response.Error, &result)
+		if err != nil {
+			return err
+		}
+		return result
 	case "ServerNotFoundError":
 		result := ServerNotFoundError{}
 		err := json.Unmarshal(response.Error, &result)
@@ -253,6 +281,14 @@ func (e CaptchaRequiredError) Error() string {
 	return e.Message
 }
 
+type DuplicateMessageError struct {
+	Message string `json:"message,omitempty" yaml:"message,omitempty"`
+}
+
+func (e DuplicateMessageError) Error() string {
+	return e.Message
+}
+
 type FingerprintVersionMismatchError struct {
 	Message string `json:"message,omitempty" yaml:"message,omitempty"`
 }
@@ -285,7 +321,7 @@ func (e GroupVerificationError) Error() string {
 	return e.Message
 }
 
-// InternalError: an internal error in signald has occured.
+// InternalError: an internal error in signald has occurred. typically these are things that "should never happen" such as issues saving to the local disk, but it is also the default error type and may catch some things that should have their own error type. If you find tht your code is depending on the exception list for any particular behavior, please file an issue so we can pull those errors out to a separate error type: https://gitlab.com/signald/signald/-/issues/new
 type InternalError struct {
 	Exceptions []string `json:"exceptions,omitempty" yaml:"exceptions,omitempty"`
 	Message    string   `json:"message,omitempty" yaml:"message,omitempty"`
@@ -414,6 +450,37 @@ type ProfileUnavailableError struct {
 }
 
 func (e ProfileUnavailableError) Error() string {
+	return e.Message
+}
+
+type ProofRequiredError struct {
+	Message    string   `json:"message,omitempty" yaml:"message,omitempty"`
+	Options    []string `json:"options,omitempty" yaml:"options,omitempty"`         // possible list values are RECAPTCHA and PUSH_CHALLENGE
+	RetryAfter int64    `json:"retry_after,omitempty" yaml:"retry_after,omitempty"` // value in seconds
+	Token      string   `json:"token,omitempty" yaml:"token,omitempty"`
+}
+
+func (e ProofRequiredError) Error() string {
+	return e.Message
+}
+
+type ProtocolInvalidMessageError struct {
+	ContentHint  int32  `json:"content_hint,omitempty" yaml:"content_hint,omitempty"`
+	GroupId      string `json:"group_id,omitempty" yaml:"group_id,omitempty"`
+	Message      string `json:"message,omitempty" yaml:"message,omitempty"`
+	Sender       string `json:"sender,omitempty" yaml:"sender,omitempty"`
+	SenderDevice int32  `json:"sender_device,omitempty" yaml:"sender_device,omitempty"`
+}
+
+func (e ProtocolInvalidMessageError) Error() string {
+	return e.Message
+}
+
+type RateLimitError struct {
+	Message string `json:"message,omitempty" yaml:"message,omitempty"`
+}
+
+func (e RateLimitError) Error() string {
 	return e.Message
 }
 

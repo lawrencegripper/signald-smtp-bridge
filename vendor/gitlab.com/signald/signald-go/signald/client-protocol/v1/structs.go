@@ -35,7 +35,7 @@ type AccountList struct {
 type AddLinkedDeviceRequest struct {
 	Request
 	Account string `json:"account,omitempty" yaml:"account,omitempty"` // The account to interact with
-	Uri     string `json:"uri,omitempty" yaml:"uri,omitempty"`         // the tsdevice:/ uri provided (typically in qr code form) by the new device
+	Uri     string `json:"uri,omitempty" yaml:"uri,omitempty"`         // the sgnl://linkdevice uri provided (typically in qr code form) by the new device
 }
 
 // AddServerRequest: add a new server to connect to. Returns the new server's UUID.
@@ -82,8 +82,9 @@ type Capabilities struct {
 	Storage      bool `json:"storage,omitempty" yaml:"storage,omitempty"`
 }
 
-// ClientMessageWrapper: Wraps all incoming messages after a v1 subscribe request is issued
+// ClientMessageWrapper: Wraps all incoming messages sent to the client after a v1 subscribe request is issued
 type ClientMessageWrapper struct {
+	Account string      `json:"account,omitempty" yaml:"account,omitempty"` // the account this message is from
 	Data    interface{} `json:"data,omitempty" yaml:"data,omitempty"`       // the incoming object. The structure will vary from message to message, see `type` and `version` fields
 	Error   bool        `json:"error,omitempty" yaml:"error,omitempty"`     // true if the incoming message represents an error
 	Type    string      `json:"type,omitempty" yaml:"type,omitempty"`       // the type of object to expect in the `data` field
@@ -399,11 +400,12 @@ type JsonReadMessage struct {
 }
 
 type JsonSendMessageResult struct {
-	Address             *JsonAddress `json:"address,omitempty" yaml:"address,omitempty"`
-	IdentityFailure     string       `json:"identityFailure,omitempty" yaml:"identityFailure,omitempty"`
-	NetworkFailure      bool         `json:"networkFailure,omitempty" yaml:"networkFailure,omitempty"`
-	Success             *SendSuccess `json:"success,omitempty" yaml:"success,omitempty"`
-	UnregisteredFailure bool         `json:"unregisteredFailure,omitempty" yaml:"unregisteredFailure,omitempty"`
+	Address              *JsonAddress        `json:"address,omitempty" yaml:"address,omitempty"`
+	IdentityFailure      string              `json:"identityFailure,omitempty" yaml:"identityFailure,omitempty"`
+	NetworkFailure       bool                `json:"networkFailure,omitempty" yaml:"networkFailure,omitempty"`
+	ProofRequiredFailure *ProofRequiredError `json:"proof_required_failure,omitempty" yaml:"proof_required_failure,omitempty"`
+	Success              *SendSuccess        `json:"success,omitempty" yaml:"success,omitempty"`
+	UnregisteredFailure  bool                `json:"unregisteredFailure,omitempty" yaml:"unregisteredFailure,omitempty"`
 }
 
 type JsonSentTranscriptMessage struct {
@@ -481,7 +483,7 @@ type ListGroupsRequest struct {
 	Account string `json:"account,omitempty" yaml:"account,omitempty"`
 }
 
-// ListenerState: indicates when the incoming connection to the signal server has started or stopped
+// ListenerState: prior attempt to indicate signald connectivity state. WebSocketConnectionState messages will be delivered at the  same time as well as in other parts of the websocket lifecycle.
 type ListenerState struct {
 	Connected bool `json:"connected,omitempty" yaml:"connected,omitempty"`
 }
@@ -529,11 +531,12 @@ type ProfileList struct {
 // ReactRequest: react to a previous message
 type ReactRequest struct {
 	Request
-	Reaction         *JsonReaction `json:"reaction,omitempty" yaml:"reaction,omitempty"`
-	RecipientAddress *JsonAddress  `json:"recipientAddress,omitempty" yaml:"recipientAddress,omitempty"`
-	RecipientGroupID string        `json:"recipientGroupId,omitempty" yaml:"recipientGroupId,omitempty"`
-	Timestamp        int64         `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
-	Username         string        `json:"username,omitempty" yaml:"username,omitempty"`
+	Members          []*JsonAddress `json:"members,omitempty" yaml:"members,omitempty"` // Optionally set to a sub-set of group members. Ignored if recipientGroupId isn't specified
+	Reaction         *JsonReaction  `json:"reaction,omitempty" yaml:"reaction,omitempty"`
+	RecipientAddress *JsonAddress   `json:"recipientAddress,omitempty" yaml:"recipientAddress,omitempty"`
+	RecipientGroupID string         `json:"recipientGroupId,omitempty" yaml:"recipientGroupId,omitempty"`
+	Timestamp        int64          `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
+	Username         string         `json:"username,omitempty" yaml:"username,omitempty"`
 }
 
 type ReceiptMessage struct {
@@ -582,10 +585,11 @@ type RemoteDelete struct {
 // RemoteDeleteRequest: delete a message previously sent
 type RemoteDeleteRequest struct {
 	Request
-	Account   string       `json:"account,omitempty" yaml:"account,omitempty"` // the account to use
-	Address   *JsonAddress `json:"address,omitempty" yaml:"address,omitempty"` // the address to send the delete message to. should match address the message to be deleted was sent to. required if group is not set.
-	Group     string       `json:"group,omitempty" yaml:"group,omitempty"`     // the group to send the delete message to. should match group the message to be deleted was sent to. required if address is not set.
-	Timestamp int64        `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
+	Account   string         `json:"account,omitempty" yaml:"account,omitempty"` // the account to use
+	Address   *JsonAddress   `json:"address,omitempty" yaml:"address,omitempty"` // the address to send the delete message to. should match address the message to be deleted was sent to. required if group is not set.
+	Group     string         `json:"group,omitempty" yaml:"group,omitempty"`     // the group to send the delete message to. should match group the message to be deleted was sent to. required if address is not set.
+	Members   []*JsonAddress `json:"members,omitempty" yaml:"members,omitempty"` // Optionally set to a sub-set of group members. Ignored if group isn't specified
+	Timestamp int64          `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
 }
 
 // RemoveLinkedDeviceRequest: Remove a linked device from the Signal account. Only allowed when the local device id is 1
@@ -637,6 +641,7 @@ type SendPaymentRequest struct {
 type SendRequest struct {
 	Request
 	Attachments      []*v0.JsonAttachment `json:"attachments,omitempty" yaml:"attachments,omitempty"`
+	Members          []*JsonAddress       `json:"members,omitempty" yaml:"members,omitempty"` // Optionally set to a sub-set of group members. Ignored if recipientGroupId isn't specified
 	Mentions         []*JsonMention       `json:"mentions,omitempty" yaml:"mentions,omitempty"`
 	MessageBody      string               `json:"messageBody,omitempty" yaml:"messageBody,omitempty"`
 	Previews         []*JsonPreview       `json:"previews,omitempty" yaml:"previews,omitempty"`
@@ -713,6 +718,13 @@ type SetProfile struct {
 	Name              string `json:"name,omitempty" yaml:"name,omitempty"`                             // New profile name. Set to empty string for no profile name
 }
 
+type SubmitChallengeRequest struct {
+	Request
+	Account      string `json:"account,omitempty" yaml:"account,omitempty"`
+	CaptchaToken string `json:"captcha_token,omitempty" yaml:"captcha_token,omitempty"`
+	Challenge    string `json:"challenge,omitempty" yaml:"challenge,omitempty"`
+}
+
 // SubscribeRequest: receive incoming messages. After making a subscribe request, incoming messages will be sent to the client encoded as ClientMessageWrapper. Send an unsubscribe request or disconnect from the socket to stop receiving messages.
 type SubscribeRequest struct {
 	Request
@@ -787,4 +799,10 @@ type VerifyRequest struct {
 
 type VersionRequest struct {
 	Request
+}
+
+// WebSocketConnectionState: indicates when the websocket connection state to the signal server has changed
+type WebSocketConnectionState struct {
+	Socket string `json:"socket,omitempty" yaml:"socket,omitempty"` // One of: UNIDENTIFIED, IDENTIFIED
+	State  string `json:"state,omitempty" yaml:"state,omitempty"`   // One of: DISCONNECTED, CONNECTING, CONNECTED, RECONNECTING, DISCONNECTING, AUTHENTICATION_FAILED, FAILED
 }

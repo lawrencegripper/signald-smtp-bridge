@@ -211,6 +211,8 @@ gitlab.com/signald/signald-go v0.0.0-20210702061511-8d38d54615e9 h1:ii6dn6FonuYR
 gitlab.com/signald/signald-go v0.0.0-20210702061511-8d38d54615e9/go.mod h1:1rK0xjcYO1Hqrjqk8QrwV7RXDCp/SPc4lxELfKFqVDw=
 gitlab.com/signald/signald-go v0.0.0-20210930075010-25050d2f0eaf h1:PENBf53DiJSPydW/9+TL8qz7raOG+sP1n5XXOUghJvo=
 gitlab.com/signald/signald-go v0.0.0-20210930075010-25050d2f0eaf/go.mod h1:etLZZ/o49wMjyYWUY7WS6NKyAguQ7g7s8YsBzlFeY2Q=
+gitlab.com/signald/signald-go v0.0.0-20211107182225-dd56e3d6f746 h1:9Mpiic+Nnu05Mnovq36GYwb+WrkvbSF9VtZvdcBFcjU=
+gitlab.com/signald/signald-go v0.0.0-20211107182225-dd56e3d6f746/go.mod h1:etLZZ/o49wMjyYWUY7WS6NKyAguQ7g7s8YsBzlFeY2Q=
 go.etcd.io/bbolt v1.3.2/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=
 go.opencensus.io v0.21.0/go.mod h1:mSImk1erAIZhrmZN+AvHh14ztQfjbGwt4TtuofqLduU=
 go.opencensus.io v0.22.0/go.mod h1:+kGneAE2xo2IficOXnaByMWTGM9T73dGwxeWcUqIpI8=

@@ -12,7 +12,7 @@ require (
 	github.com/marcospgmelo/parsemail v1.3.1-0.20201020162348-38663e9311e7
 	github.com/ugorji/go v1.1.4 // indirect
 	github.com/xordataexchange/crypt v0.0.3-0.20170626215501-b2862e3d0a77 // indirect
-	gitlab.com/signald/signald-go v0.0.0-20210930075010-25050d2f0eaf
+	gitlab.com/signald/signald-go v0.0.0-20211107182225-dd56e3d6f746
 	golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c // indirect
 )
 
