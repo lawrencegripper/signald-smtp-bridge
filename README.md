@@ -15,6 +15,7 @@ If you don't know what `signald` is yet best to stop and learn how that works fi
 # Environment Variables for config
 
 - `SEND_FROM` set to the signal username to send from when `@signal.bridge` email isn't used as the from address
+- `SEND_TO` set to the signal username/number to send to when `@signal.bridge` isn't set in the recipient email address 
 - `SMTP_USERNAME`
 - `SMTP_PASSWORD`
 - `SMTP_ALLOW_ANNON` set to `TRUE` to enable anonymous access

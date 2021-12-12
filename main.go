@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -198,6 +199,8 @@ func captureHTMLEmailAsPDF(session *Session) (string, error) {
 	return filePath, nil
 }
 
+var phoneNumberRegex, _ = regexp.Compile("\\+44[0-9]{10}")
+
 func sendSignalMessage(session *Session) error {
 	var pdfFile string
 	var err error
@@ -236,8 +239,12 @@ func sendSignalMessage(session *Session) error {
 
 	recipient := mustGetSignalUserOrGroupFromAddress(session.To)
 	if strings.HasPrefix(recipient, "+") {
-		req.RecipientAddress = &v1.JsonAddress{Number: recipient}
-		log.Printf("Sending to user: %q", recipient)
+		sendTo := os.Getenv("SEND_TO")
+		if phoneNumberRegex.MatchString(recipient) {
+			sendTo = recipient
+		}
+		req.RecipientAddress = &v1.JsonAddress{Number: sendTo}
+		log.Printf("Sending to user: %q", sendTo)
 	} else {
 		req.RecipientGroupID = recipient
 		log.Printf("Sending to group: %q", recipient)
