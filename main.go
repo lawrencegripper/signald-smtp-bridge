@@ -216,7 +216,11 @@ func sendSignalMessage(session *Session) error {
 
 	var fromUsername string
 	if strings.Contains(session.From, "@signal.bridge") {
-		fromUsername = mustGetSignalUserOrGroupFromAddress(session.From)
+		if !strings.HasPrefix(session.From, "+") {
+			fromUsername = os.Getenv("SEND_FROM")
+		} else {
+			fromUsername = mustGetSignalUserOrGroupFromAddress(session.From)
+		}
 	} else {
 		fromUsername = os.Getenv("SEND_FROM")
 	}
