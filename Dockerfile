@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.2
-FROM golang:1.16-buster as builder
+FROM golang:1.19-bullseye as builder
 
 WORKDIR /build
 COPY . .

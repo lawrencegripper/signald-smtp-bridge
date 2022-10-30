@@ -16,6 +16,5 @@ publish:
 	docker push ghcr.io/lawrencegripper/signald-smtp-bridge:$$(cat tag.txt)
 	docker push ghcr.io/lawrencegripper/signald-smtp-bridge:latest
 
-deploy:
-	kubeval ./Deployment.yaml
-	kubectl -f ./Deployment.yaml
+deploy: publish
+	kubectl apply -f ./Deployment.yaml
