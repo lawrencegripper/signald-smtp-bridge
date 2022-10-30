@@ -291,6 +291,7 @@ type OfferMessage struct {
 }
 
 type Optional struct {
+	Empty   bool `json:"empty,omitempty" yaml:"empty,omitempty"`
 	Present bool `json:"present,omitempty" yaml:"present,omitempty"`
 }
 

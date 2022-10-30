@@ -50,10 +50,14 @@ type Client struct {
 	DebugWriter io.Writer
 }
 
+// 30 seconds was chosen as it's the
+// same duration as http.DefaultTransport's timeout.
+var defaultTimeout = 30 * time.Second
+
 // Dial returns a new Client connected to an SMTP server at addr.
 // The addr must include a port, as in "mail.example.com:smtp".
 func Dial(addr string) (*Client, error) {
-	conn, err := net.Dial("tcp", addr)
+	conn, err := net.DialTimeout("tcp", addr, defaultTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +70,13 @@ func Dial(addr string) (*Client, error) {
 //
 // A nil tlsConfig is equivalent to a zero tls.Config.
 func DialTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
-	conn, err := tls.Dial("tcp", addr, tlsConfig)
+	tlsDialer := tls.Dialer{
+		NetDialer: &net.Dialer{
+			Timeout: defaultTimeout,
+		},
+		Config: tlsConfig,
+	}
+	conn, err := tlsDialer.Dial("tcp", addr)
 	if err != nil {
 		return nil, err
 	}
@@ -91,6 +101,10 @@ func NewClient(conn net.Conn, host string) (*Client, error) {
 
 	c.setConn(conn)
 
+	// Initial greeting timeout. RFC 5321 recommends 5 minutes.
+	c.conn.SetDeadline(time.Now().Add(5 * time.Minute))
+	defer c.conn.SetDeadline(time.Time{})
+
 	_, _, err := c.Text.ReadResponse(220)
 	if err != nil {
 		c.Text.Close()
@@ -104,7 +118,7 @@ func NewClient(conn net.Conn, host string) (*Client, error) {
 }
 
 // NewClientLMTP returns a new LMTP Client (as defined in RFC 2033) using an
-// existing connector and host as a server name to be used when authenticating.
+// existing connection and host as a server name to be used when authenticating.
 func NewClientLMTP(conn net.Conn, host string) (*Client, error) {
 	c, err := NewClient(conn, host)
 	if err != nil {
@@ -416,10 +430,17 @@ type dataCloser struct {
 	c *Client
 	io.WriteCloser
 	statusCb func(rcpt string, status *SMTPError)
+	closed   bool
 }
 
 func (d *dataCloser) Close() error {
-	d.WriteCloser.Close()
+	if d.closed {
+		return fmt.Errorf("smtp: data writer closed twice")
+	}
+
+	if err := d.WriteCloser.Close(); err != nil {
+		return err
+	}
 
 	d.c.conn.SetDeadline(time.Now().Add(d.c.SubmissionTimeout))
 	defer d.c.conn.SetDeadline(time.Time{})
@@ -441,7 +462,6 @@ func (d *dataCloser) Close() error {
 			}
 			expectedResponses--
 		}
-		return nil
 	} else {
 		_, _, err := d.c.Text.ReadResponse(250)
 		if err != nil {
@@ -450,8 +470,10 @@ func (d *dataCloser) Close() error {
 			}
 			return err
 		}
-		return nil
 	}
+
+	d.closed = true
+	return nil
 }
 
 // Data issues a DATA command to the server and returns a writer that
@@ -465,7 +487,7 @@ func (c *Client) Data() (io.WriteCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &dataCloser{c, c.Text.DotWriter(), nil}, nil
+	return &dataCloser{c: c, WriteCloser: c.Text.DotWriter()}, nil
 }
 
 // LMTPData is the LMTP-specific version of the Data method. It accepts a callback
@@ -485,16 +507,55 @@ func (c *Client) LMTPData(statusCb func(rcpt string, status *SMTPError)) (io.Wri
 	if err != nil {
 		return nil, err
 	}
-	return &dataCloser{c, c.Text.DotWriter(), statusCb}, nil
+	return &dataCloser{c: c, WriteCloser: c.Text.DotWriter(), statusCb: statusCb}, nil
+}
+
+// SendMail will use an existing connection to send an email from
+// address from, to addresses to, with message r.
+//
+// This function does not start TLS, nor does it perform authentication. Use
+// StartTLS and Auth before-hand if desirable.
+//
+// The addresses in the to parameter are the SMTP RCPT addresses.
+//
+// The r parameter should be an RFC 822-style email with headers
+// first, a blank line, and then the message body. The lines of r
+// should be CRLF terminated. The r headers should usually include
+// fields such as "From", "To", "Subject", and "Cc".  Sending "Bcc"
+// messages is accomplished by including an email address in the to
+// parameter but not including it in the r headers.
+func (c *Client) SendMail(from string, to []string, r io.Reader) error {
+	var err error
+
+	if err = c.Mail(from, nil); err != nil {
+		return err
+	}
+	for _, addr := range to {
+		if err = c.Rcpt(addr); err != nil {
+			return err
+		}
+	}
+	w, err := c.Data()
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(w, r)
+	if err != nil {
+		return err
+	}
+	err = w.Close()
+	if err != nil {
+		return err
+	}
+	return c.Quit()
 }
 
 var testHookStartTLS func(*tls.Config) // nil, except for tests
 
-// SendMail connects to the server at addr, switches to TLS if
-// possible, authenticates with the optional mechanism a if possible,
-// and then sends an email from address from, to addresses to, with
-// message r.
-// The addr must include a port, as in "mail.example.com:smtp".
+// SendMail connects to the server at addr, switches to TLS, authenticates with
+// the optional SASL client, and then sends an email from address from, to
+// addresses to, with message r. The addr must include a port, as in
+// "mail.example.com:smtp".
 //
 // The addresses in the to parameter are the SMTP RCPT addresses.
 //
@@ -526,13 +587,15 @@ func SendMail(addr string, a sasl.Client, from string, to []string, r io.Reader)
 		return err
 	}
 	defer c.Close()
+
 	if err = c.hello(); err != nil {
 		return err
 	}
-	if ok, _ := c.Extension("STARTTLS"); ok {
-		if err = c.StartTLS(nil); err != nil {
-			return err
-		}
+	if ok, _ := c.Extension("STARTTLS"); !ok {
+		return errors.New("smtp: server doesn't support STARTTLS")
+	}
+	if err = c.StartTLS(nil); err != nil {
+		return err
 	}
 	if a != nil && c.ext != nil {
 		if _, ok := c.ext["AUTH"]; !ok {
@@ -542,27 +605,7 @@ func SendMail(addr string, a sasl.Client, from string, to []string, r io.Reader)
 			return err
 		}
 	}
-	if err = c.Mail(from, nil); err != nil {
-		return err
-	}
-	for _, addr := range to {
-		if err = c.Rcpt(addr); err != nil {
-			return err
-		}
-	}
-	w, err := c.Data()
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(w, r)
-	if err != nil {
-		return err
-	}
-	err = w.Close()
-	if err != nil {
-		return err
-	}
-	return c.Quit()
+	return c.SendMail(from, to, r)
 }
 
 // Extension reports whether an extension is support by the server.

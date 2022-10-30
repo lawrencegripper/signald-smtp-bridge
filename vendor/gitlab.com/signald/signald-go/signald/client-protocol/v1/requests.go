@@ -16,14 +16,13 @@ func (r *AcceptInvitationRequest) Submit(conn *signald.Signald) (response JsonGr
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -49,14 +48,13 @@ func (r *AddLinkedDeviceRequest) Submit(conn *signald.Signald) (err error) {
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -75,14 +73,13 @@ func (r *AddServerRequest) Submit(conn *signald.Signald) (response string, err e
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -108,14 +105,45 @@ func (r *ApproveMembershipRequest) Submit(conn *signald.Signald) (response JsonG
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
 
+	rawResponse := <-responseChannel
+	if rawResponse.Error != nil {
+		err = mkerr(rawResponse)
+		return
+	}
+
+	err = json.Unmarshal(rawResponse.Data, &response)
+	if err != nil {
+		rawResponseJson, _ := rawResponse.Data.MarshalJSON()
+		log.Println("signald-go: error unmarshalling response from signald of type", rawResponse.Type, string(rawResponseJson))
+		return
+	}
+
+	return response, nil
+
+}
+
+// Submit: Bans users from a group. This works even if the users aren't in the group. If they are currently in the group, they will also be removed.
+func (r *BanUserRequest) Submit(conn *signald.Signald) (response JsonGroupV2Info, err error) {
+	r.Version = "v1"
+	r.Type = "ban_user"
+	if r.ID == "" {
+		r.ID = signald.GenerateID()
+	}
 	responseChannel := conn.GetResponseListener(r.ID)
 	defer conn.CloseResponseListener(r.ID)
+	err = conn.RawRequest(r)
+	if err != nil {
+		log.Println("signald-go: error submitting request to signald")
+		return
+	}
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -140,14 +168,13 @@ func (r *CreateGroupRequest) Submit(conn *signald.Signald) (response JsonGroupV2
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -173,14 +200,13 @@ func (r *DeleteAccountRequest) Submit(conn *signald.Signald) (err error) {
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -198,14 +224,13 @@ func (r *RemoveServerRequest) Submit(conn *signald.Signald) (err error) {
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -217,21 +242,20 @@ func (r *RemoveServerRequest) Submit(conn *signald.Signald) (err error) {
 
 }
 
-// Submit: After a linking URI has been requested, finish_link must be called with the session_id provided with the URI. it will return information about the new account once the linking process is completed by the other device.
+// Submit: After a linking URI has been requested, finish_link must be called with the session_id provided with the URI. it will return information about the new account once the linking process is completed by the other device and the new account is setup. Note that the account setup process can sometimes take some time, if rapid userfeedback is required after scanning, use wait_for_scan first, then finish setup with finish_link.
 func (r *FinishLinkRequest) Submit(conn *signald.Signald) (response Account, err error) {
 	r.Version = "v1"
 	r.Type = "finish_link"
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -257,14 +281,13 @@ func (r *GenerateLinkingURIRequest) Submit(conn *signald.Signald) (response Link
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -290,14 +313,13 @@ func (r *GetAllIdentities) Submit(conn *signald.Signald) (response AllIdentityKe
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -316,21 +338,52 @@ func (r *GetAllIdentities) Submit(conn *signald.Signald) (response AllIdentityKe
 
 }
 
-// Submit: Query the server for the latest state of a known group. If no account in signald is a member of the group (anymore), an error with error_type: 'UnknownGroupError' is returned.
+// Submit: Query the server for the latest state of a known group. If the account is not a member of the group, an UnknownGroupError is returned.
 func (r *GetGroupRequest) Submit(conn *signald.Signald) (response JsonGroupV2Info, err error) {
 	r.Version = "v1"
 	r.Type = "get_group"
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
 
+	rawResponse := <-responseChannel
+	if rawResponse.Error != nil {
+		err = mkerr(rawResponse)
+		return
+	}
+
+	err = json.Unmarshal(rawResponse.Data, &response)
+	if err != nil {
+		rawResponseJson, _ := rawResponse.Data.MarshalJSON()
+		log.Println("signald-go: error unmarshalling response from signald of type", rawResponse.Type, string(rawResponseJson))
+		return
+	}
+
+	return response, nil
+
+}
+
+// Submit: Query the server for group revision history. The history contains information about the changes between each revision and the user that made the change.
+func (r *GetGroupRevisionPagesRequest) Submit(conn *signald.Signald) (response GroupHistoryPage, err error) {
+	r.Version = "v1"
+	r.Type = "get_group_revision_pages"
+	if r.ID == "" {
+		r.ID = signald.GenerateID()
+	}
 	responseChannel := conn.GetResponseListener(r.ID)
 	defer conn.CloseResponseListener(r.ID)
+	err = conn.RawRequest(r)
+	if err != nil {
+		log.Println("signald-go: error submitting request to signald")
+		return
+	}
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -356,14 +409,13 @@ func (r *GetIdentitiesRequest) Submit(conn *signald.Signald) (response IdentityK
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -389,14 +441,13 @@ func (r *GetLinkedDevicesRequest) Submit(conn *signald.Signald) (response Linked
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -422,14 +473,13 @@ func (r *GetProfileRequest) Submit(conn *signald.Signald) (response Profile, err
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -455,14 +505,13 @@ func (r *RemoteConfigRequest) Submit(conn *signald.Signald) (response RemoteConf
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -487,14 +536,13 @@ func (r *GetServersRequest) Submit(conn *signald.Signald) (response ServerList, 
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -520,14 +568,45 @@ func (r *GroupLinkInfoRequest) Submit(conn *signald.Signald) (response JsonGroup
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
 
+	rawResponse := <-responseChannel
+	if rawResponse.Error != nil {
+		err = mkerr(rawResponse)
+		return
+	}
+
+	err = json.Unmarshal(rawResponse.Data, &response)
+	if err != nil {
+		rawResponseJson, _ := rawResponse.Data.MarshalJSON()
+		log.Println("signald-go: error unmarshalling response from signald of type", rawResponse.Type, string(rawResponseJson))
+		return
+	}
+
+	return response, nil
+
+}
+
+// Submit: Determine whether an account identifier is registered on the Signal service.
+func (r *IsIdentifierRegisteredRequest) Submit(conn *signald.Signald) (response BooleanMessage, err error) {
+	r.Version = "v1"
+	r.Type = "is_identifier_registered"
+	if r.ID == "" {
+		r.ID = signald.GenerateID()
+	}
 	responseChannel := conn.GetResponseListener(r.ID)
 	defer conn.CloseResponseListener(r.ID)
+	err = conn.RawRequest(r)
+	if err != nil {
+		log.Println("signald-go: error submitting request to signald")
+		return
+	}
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -553,14 +632,13 @@ func (r *JoinGroupRequest) Submit(conn *signald.Signald) (response JsonGroupJoin
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -585,14 +663,13 @@ func (r *LeaveGroupRequest) Submit(conn *signald.Signald) (response GroupInfo, e
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -618,14 +695,13 @@ func (r *ListAccountsRequest) Submit(conn *signald.Signald) (response AccountLis
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -650,14 +726,13 @@ func (r *ListContactsRequest) Submit(conn *signald.Signald) (response ProfileLis
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -682,14 +757,13 @@ func (r *ListGroupsRequest) Submit(conn *signald.Signald) (response GroupList, e
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -714,14 +788,13 @@ func (r *MarkReadRequest) Submit(conn *signald.Signald) (err error) {
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -740,14 +813,13 @@ func (r *ReactRequest) Submit(conn *signald.Signald) (response SendResponse, err
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -773,14 +845,13 @@ func (r *RefuseMembershipRequest) Submit(conn *signald.Signald) (response JsonGr
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -806,14 +877,13 @@ func (r *RegisterRequest) Submit(conn *signald.Signald) (response Account, err e
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -839,14 +909,13 @@ func (r *RemoteDeleteRequest) Submit(conn *signald.Signald) (response SendRespon
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -872,14 +941,13 @@ func (r *RemoveLinkedDeviceRequest) Submit(conn *signald.Signald) (err error) {
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -898,14 +966,13 @@ func (r *RequestSyncRequest) Submit(conn *signald.Signald) (err error) {
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -924,14 +991,13 @@ func (r *ResetSessionRequest) Submit(conn *signald.Signald) (response SendRespon
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -957,14 +1023,13 @@ func (r *ResolveAddressRequest) Submit(conn *signald.Signald) (response JsonAddr
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -989,14 +1054,13 @@ func (r *SendRequest) Submit(conn *signald.Signald) (response SendResponse, err 
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -1022,14 +1086,13 @@ func (r *SendPaymentRequest) Submit(conn *signald.Signald) (response SendRespons
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -1048,21 +1111,52 @@ func (r *SendPaymentRequest) Submit(conn *signald.Signald) (response SendRespons
 
 }
 
-// Submit: set this device's name. This will show up on the mobile device on the same account under
-func (r *SetDeviceNameRequest) Submit(conn *signald.Signald) (err error) {
+// Submit: Sends a sync message to the account's devices
+func (r *SendSyncMessageRequest) Submit(conn *signald.Signald) (response JsonSendMessageResult, err error) {
 	r.Version = "v1"
-	r.Type = "set_device_name"
+	r.Type = "send_sync_message"
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
 
+	rawResponse := <-responseChannel
+	if rawResponse.Error != nil {
+		err = mkerr(rawResponse)
+		return
+	}
+
+	err = json.Unmarshal(rawResponse.Data, &response)
+	if err != nil {
+		rawResponseJson, _ := rawResponse.Data.MarshalJSON()
+		log.Println("signald-go: error unmarshalling response from signald of type", rawResponse.Type, string(rawResponseJson))
+		return
+	}
+
+	return response, nil
+
+}
+
+// Submit: set this device's name. This will show up on the mobile device on the same account under settings -> linked devices
+func (r *SetDeviceNameRequest) Submit(conn *signald.Signald) (err error) {
+	r.Version = "v1"
+	r.Type = "set_device_name"
+	if r.ID == "" {
+		r.ID = signald.GenerateID()
+	}
 	responseChannel := conn.GetResponseListener(r.ID)
 	defer conn.CloseResponseListener(r.ID)
+	err = conn.RawRequest(r)
+	if err != nil {
+		log.Println("signald-go: error submitting request to signald")
+		return
+	}
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -1081,14 +1175,13 @@ func (r *SetExpirationRequest) Submit(conn *signald.Signald) (response SendRespo
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -1113,14 +1206,13 @@ func (r *SetProfile) Submit(conn *signald.Signald) (err error) {
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -1138,14 +1230,13 @@ func (r *SubmitChallengeRequest) Submit(conn *signald.Signald) (err error) {
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -1164,14 +1255,13 @@ func (r *SubscribeRequest) Submit(conn *signald.Signald) (err error) {
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -1190,14 +1280,13 @@ func (r *TrustRequest) Submit(conn *signald.Signald) (err error) {
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -1216,14 +1305,13 @@ func (r *TypingRequest) Submit(conn *signald.Signald) (err error) {
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -1235,6 +1323,38 @@ func (r *TypingRequest) Submit(conn *signald.Signald) (err error) {
 
 }
 
+// Submit: Unbans users from a group.
+func (r *UnbanUserRequest) Submit(conn *signald.Signald) (response JsonGroupV2Info, err error) {
+	r.Version = "v1"
+	r.Type = "unban_user"
+	if r.ID == "" {
+		r.ID = signald.GenerateID()
+	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
+	err = conn.RawRequest(r)
+	if err != nil {
+		log.Println("signald-go: error submitting request to signald")
+		return
+	}
+
+	rawResponse := <-responseChannel
+	if rawResponse.Error != nil {
+		err = mkerr(rawResponse)
+		return
+	}
+
+	err = json.Unmarshal(rawResponse.Data, &response)
+	if err != nil {
+		rawResponseJson, _ := rawResponse.Data.MarshalJSON()
+		log.Println("signald-go: error unmarshalling response from signald of type", rawResponse.Type, string(rawResponseJson))
+		return
+	}
+
+	return response, nil
+
+}
+
 // Submit: See subscribe for more info
 func (r *UnsubscribeRequest) Submit(conn *signald.Signald) (err error) {
 	r.Version = "v1"
@@ -1242,14 +1362,13 @@ func (r *UnsubscribeRequest) Submit(conn *signald.Signald) (err error) {
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -1268,14 +1387,13 @@ func (r *UpdateContactRequest) Submit(conn *signald.Signald) (response Profile, 
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -1301,14 +1419,13 @@ func (r *UpdateGroupRequest) Submit(conn *signald.Signald) (response GroupInfo, 
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -1334,14 +1451,13 @@ func (r *VerifyRequest) Submit(conn *signald.Signald) (response Account, err err
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -1366,14 +1482,13 @@ func (r *VersionRequest) Submit(conn *signald.Signald) (response JsonVersionMess
 	if r.ID == "" {
 		r.ID = signald.GenerateID()
 	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
 	err = conn.RawRequest(r)
 	if err != nil {
 		log.Println("signald-go: error submitting request to signald")
 		return
 	}
-
-	responseChannel := conn.GetResponseListener(r.ID)
-	defer conn.CloseResponseListener(r.ID)
 
 	rawResponse := <-responseChannel
 	if rawResponse.Error != nil {
@@ -1389,5 +1504,30 @@ func (r *VersionRequest) Submit(conn *signald.Signald) (response JsonVersionMess
 	}
 
 	return response, nil
+
+}
+
+// Submit: An optional part of the linking process. Intended to be called after displaying the QR code, will return quickly after the user scans the QR code. finish_link must be called after wait_for_scan returns a non-error
+func (r *WaitForScanRequest) Submit(conn *signald.Signald) (err error) {
+	r.Version = "v1"
+	r.Type = "wait_for_scan"
+	if r.ID == "" {
+		r.ID = signald.GenerateID()
+	}
+	responseChannel := conn.GetResponseListener(r.ID)
+	defer conn.CloseResponseListener(r.ID)
+	err = conn.RawRequest(r)
+	if err != nil {
+		log.Println("signald-go: error submitting request to signald")
+		return
+	}
+
+	rawResponse := <-responseChannel
+	if rawResponse.Error != nil {
+		err = mkerr(rawResponse)
+		return
+	}
+
+	return err
 
 }

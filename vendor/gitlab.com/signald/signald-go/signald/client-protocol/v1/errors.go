@@ -32,6 +32,20 @@ func mkerr(response client_protocol.BasicResponse) error {
 			return err
 		}
 		return result
+	case "AttachmentTooLargeError":
+		result := AttachmentTooLargeError{}
+		err := json.Unmarshal(response.Error, &result)
+		if err != nil {
+			return err
+		}
+		return result
+	case "AuthorizationFailedError":
+		result := AuthorizationFailedError{}
+		err := json.Unmarshal(response.Error, &result)
+		if err != nil {
+			return err
+		}
+		return result
 	case "CaptchaRequiredError":
 		result := CaptchaRequiredError{}
 		err := json.Unmarshal(response.Error, &result)
@@ -62,6 +76,13 @@ func mkerr(response client_protocol.BasicResponse) error {
 		return result
 	case "GroupNotActiveError":
 		result := GroupNotActiveError{}
+		err := json.Unmarshal(response.Error, &result)
+		if err != nil {
+			return err
+		}
+		return result
+	case "GroupPatchNotAcceptedError":
+		result := GroupPatchNotAcceptedError{}
 		err := json.Unmarshal(response.Error, &result)
 		if err != nil {
 			return err
@@ -193,6 +214,13 @@ func mkerr(response client_protocol.BasicResponse) error {
 			return err
 		}
 		return result
+	case "ProtocolInvalidKeyIdError":
+		result := ProtocolInvalidKeyIdError{}
+		err := json.Unmarshal(response.Error, &result)
+		if err != nil {
+			return err
+		}
+		return result
 	case "ProtocolInvalidMessageError":
 		result := ProtocolInvalidMessageError{}
 		err := json.Unmarshal(response.Error, &result)
@@ -200,8 +228,29 @@ func mkerr(response client_protocol.BasicResponse) error {
 			return err
 		}
 		return result
+	case "ProtocolNoSessionError":
+		result := ProtocolNoSessionError{}
+		err := json.Unmarshal(response.Error, &result)
+		if err != nil {
+			return err
+		}
+		return result
 	case "RateLimitError":
 		result := RateLimitError{}
+		err := json.Unmarshal(response.Error, &result)
+		if err != nil {
+			return err
+		}
+		return result
+	case "SQLError":
+		result := SQLError{}
+		err := json.Unmarshal(response.Error, &result)
+		if err != nil {
+			return err
+		}
+		return result
+	case "ScanTimeoutError":
+		result := ScanTimeoutError{}
 		err := json.Unmarshal(response.Error, &result)
 		if err != nil {
 			return err
@@ -223,6 +272,20 @@ func mkerr(response client_protocol.BasicResponse) error {
 		return result
 	case "UnknownIdentityKeyError":
 		result := UnknownIdentityKeyError{}
+		err := json.Unmarshal(response.Error, &result)
+		if err != nil {
+			return err
+		}
+		return result
+	case "UnregisteredUserError":
+		result := UnregisteredUserError{}
+		err := json.Unmarshal(response.Error, &result)
+		if err != nil {
+			return err
+		}
+		return result
+	case "UnsupportedGroupError":
+		result := UnsupportedGroupError{}
 		err := json.Unmarshal(response.Error, &result)
 		if err != nil {
 			return err
@@ -272,6 +335,24 @@ func (e AccountLockedError) Error() string {
 	return e.Message
 }
 
+type AttachmentTooLargeError struct {
+	Filename string `json:"filename,omitempty" yaml:"filename,omitempty"`
+	Message  string `json:"message,omitempty" yaml:"message,omitempty"`
+}
+
+func (e AttachmentTooLargeError) Error() string {
+	return e.Message
+}
+
+// AuthorizationFailedError: Indicates the server rejected our credentials or a failed group update. Typically means the linked device was removed by the primary device, or that the account was re-registered. For group updates, this can indicate that we lack permissions.
+type AuthorizationFailedError struct {
+	Message string `json:"message,omitempty" yaml:"message,omitempty"`
+}
+
+func (e AuthorizationFailedError) Error() string {
+	return e.Message
+}
+
 type CaptchaRequiredError struct {
 	Message string `json:"message,omitempty" yaml:"message,omitempty"`
 	More    string `json:"more,omitempty" yaml:"more,omitempty"`
@@ -282,7 +363,8 @@ func (e CaptchaRequiredError) Error() string {
 }
 
 type DuplicateMessageError struct {
-	Message string `json:"message,omitempty" yaml:"message,omitempty"`
+	Message   string `json:"message,omitempty" yaml:"message,omitempty"`
+	Timestamp int64  `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
 }
 
 func (e DuplicateMessageError) Error() string {
@@ -310,6 +392,15 @@ type GroupNotActiveError struct {
 }
 
 func (e GroupNotActiveError) Error() string {
+	return e.Message
+}
+
+// GroupPatchNotAcceptedError: Indicates the server rejected our group update. This can be due to errors such as trying to add a user that's already in the group.
+type GroupPatchNotAcceptedError struct {
+	Message string `json:"message,omitempty" yaml:"message,omitempty"`
+}
+
+func (e GroupPatchNotAcceptedError) Error() string {
 	return e.Message
 }
 
@@ -464,15 +555,42 @@ func (e ProofRequiredError) Error() string {
 	return e.Message
 }
 
+type ProtocolInvalidKeyIdError struct {
+	ContentHint  int32  `json:"content_hint,omitempty" yaml:"content_hint,omitempty"`
+	GroupId      string `json:"group_id,omitempty" yaml:"group_id,omitempty"`
+	Message      string `json:"message,omitempty" yaml:"message,omitempty"`
+	Sender       string `json:"sender,omitempty" yaml:"sender,omitempty"`
+	SenderDevice int32  `json:"sender_device,omitempty" yaml:"sender_device,omitempty"`
+	Timestamp    int64  `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
+}
+
+func (e ProtocolInvalidKeyIdError) Error() string {
+	return e.Message
+}
+
 type ProtocolInvalidMessageError struct {
 	ContentHint  int32  `json:"content_hint,omitempty" yaml:"content_hint,omitempty"`
 	GroupId      string `json:"group_id,omitempty" yaml:"group_id,omitempty"`
 	Message      string `json:"message,omitempty" yaml:"message,omitempty"`
 	Sender       string `json:"sender,omitempty" yaml:"sender,omitempty"`
 	SenderDevice int32  `json:"sender_device,omitempty" yaml:"sender_device,omitempty"`
+	Timestamp    int64  `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
 }
 
 func (e ProtocolInvalidMessageError) Error() string {
+	return e.Message
+}
+
+type ProtocolNoSessionError struct {
+	ContentHint  int32  `json:"content_hint,omitempty" yaml:"content_hint,omitempty"`
+	GroupId      string `json:"group_id,omitempty" yaml:"group_id,omitempty"`
+	Message      string `json:"message,omitempty" yaml:"message,omitempty"`
+	Sender       string `json:"sender,omitempty" yaml:"sender,omitempty"`
+	SenderDevice int32  `json:"sender_device,omitempty" yaml:"sender_device,omitempty"`
+	Timestamp    int64  `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
+}
+
+func (e ProtocolNoSessionError) Error() string {
 	return e.Message
 }
 
@@ -481,6 +599,22 @@ type RateLimitError struct {
 }
 
 func (e RateLimitError) Error() string {
+	return e.Message
+}
+
+type SQLError struct {
+	Message string `json:"message,omitempty" yaml:"message,omitempty"`
+}
+
+func (e SQLError) Error() string {
+	return e.Message
+}
+
+type ScanTimeoutError struct {
+	Message string `json:"message,omitempty" yaml:"message,omitempty"`
+}
+
+func (e ScanTimeoutError) Error() string {
 	return e.Message
 }
 
@@ -506,6 +640,24 @@ type UnknownIdentityKeyError struct {
 }
 
 func (e UnknownIdentityKeyError) Error() string {
+	return e.Message
+}
+
+type UnregisteredUserError struct {
+	E164Number string `json:"e164_number,omitempty" yaml:"e164_number,omitempty"`
+	Message    string `json:"message,omitempty" yaml:"message,omitempty"`
+}
+
+func (e UnregisteredUserError) Error() string {
+	return e.Message
+}
+
+// UnsupportedGroupError: returned in response to use v1 groups, which are no longer supported
+type UnsupportedGroupError struct {
+	Message string `json:"message,omitempty" yaml:"message,omitempty"`
+}
+
+func (e UnsupportedGroupError) Error() string {
 	return e.Message
 }
 

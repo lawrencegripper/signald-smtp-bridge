@@ -5,9 +5,10 @@ import (
 )
 
 type BasicResponse struct {
-	ID        string
-	Type      string
-	ErrorType string
-	Error     json.RawMessage
-	Data      json.RawMessage
+	ID        string          `json:"id,omitempty"`
+	Type      string          `json:"type,omitempty"`
+	ErrorType string          `json:"error_type,omitempty"`
+	Error     json.RawMessage `json:"error,omitempty"`
+	Data      json.RawMessage `json:"data,omitempty"`
+	Account   string          `json:"account,omitempty"`
 }

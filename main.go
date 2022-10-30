@@ -21,7 +21,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/marcospgmelo/parsemail"
 	"gitlab.com/signald/signald-go/signald"
-	v0 "gitlab.com/signald/signald-go/signald/client-protocol/v0"
 	v1 "gitlab.com/signald/signald-go/signald/client-protocol/v1"
 )
 
@@ -41,20 +40,8 @@ func init() {
 // The Backend implements SMTP server methods.
 type Backend struct{}
 
-// Login handles a login command with username and password.
-func (bkd *Backend) Login(state *smtp.ConnectionState, username, password string) (smtp.Session, error) {
-	if username != os.Getenv("SMTP_USERNAME") && password != os.Getenv("SMTP_PASSWORD") {
-		return nil, errors.New("Invalid username or password")
-	}
-	return &Session{}, nil
-}
-
-// AnonymousLogin requires clients to authenticate using SMTP AUTH before sending emails
-func (bkd *Backend) AnonymousLogin(state *smtp.ConnectionState) (smtp.Session, error) {
-	if os.Getenv("SMTP_ALLOW_ANNON") == "TRUE" {
-		return &Session{}, nil
-	}
-	return nil, smtp.ErrAuthRequired
+func (bkd *Backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
+	return &Session{Anonymous: true}, nil
 }
 
 // A Session is returned after successful login.
@@ -63,9 +50,10 @@ type Session struct {
 	To          string
 	MessageData string
 	Email       *parsemail.Email
+	Anonymous   bool
 }
 
-func (s *Session) Mail(from string, opts smtp.MailOptions) error {
+func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
 	log.Println("Mail from:", from)
 	s.From = from
 	return nil
@@ -97,6 +85,22 @@ func (s *Session) Data(r io.Reader) error {
 func (s *Session) Reset() {}
 
 func (s *Session) Logout() error {
+	return nil
+}
+
+func (s *Session) AuthPlain(username, password string) error {
+	if s.Anonymous {
+		if os.Getenv("SMTP_ALLOW_ANNON") == "TRUE" {
+			return nil
+		} else {
+			return smtp.ErrAuthRequired
+		}
+	}
+
+	if username != os.Getenv("SMTP_USERNAME") && password != os.Getenv("SMTP_PASSWORD") {
+		return errors.New("Invalid username or password")
+	}
+
 	return nil
 }
 
@@ -236,7 +240,7 @@ func sendSignalMessage(session *Session) error {
 	// check file exists
 	_, err = os.Stat(pdfFile)
 	if err == nil {
-		req.Attachments = []*v0.JsonAttachment{
+		req.Attachments = []*v1.JsonAttachment{
 			{Filename: pdfFile},
 		}
 	}

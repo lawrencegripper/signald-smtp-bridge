@@ -25,6 +25,7 @@ type Account struct {
 	Address   *JsonAddress `json:"address,omitempty" yaml:"address,omitempty"`       // The address of this account
 	DeviceId  int32        `json:"device_id,omitempty" yaml:"device_id,omitempty"`   // The Signal device ID. Official Signal mobile clients (iPhone and Android) have device ID = 1, while linked devices such as Signal Desktop or Signal iPad have higher device IDs.
 	Pending   bool         `json:"pending,omitempty" yaml:"pending,omitempty"`       // indicates the account has not completed registration
+	Pni       string       `json:"pni,omitempty" yaml:"pni,omitempty"`
 }
 
 type AccountList struct {
@@ -62,6 +63,24 @@ type ApproveMembershipRequest struct {
 	Members []*JsonAddress `json:"members,omitempty" yaml:"members,omitempty"` // list of requesting members to approve
 }
 
+// BanUserRequest: Bans users from a group. This works even if the users aren't in the group. If they are currently in the group, they will also be removed.
+type BanUserRequest struct {
+	Request
+	Account string         `json:"account,omitempty" yaml:"account,omitempty"` // The account to interact with
+	GroupId string         `json:"group_id,omitempty" yaml:"group_id,omitempty"`
+	Users   []*JsonAddress `json:"users,omitempty" yaml:"users,omitempty"` // List of users to ban
+}
+
+type BannedGroupMember struct {
+	Timestamp int64  `json:"timestamp,omitempty" yaml:"timestamp,omitempty"` // Timestamp as milliseconds since Unix epoch of when the user was banned. This field is set by the server.
+	UUID      string `json:"uuid,omitempty" yaml:"uuid,omitempty"`
+}
+
+// BooleanMessage: A message containing a single boolean, usually as a response
+type BooleanMessage struct {
+	Value bool `json:"value,omitempty" yaml:"value,omitempty"`
+}
+
 type BusyMessage struct {
 	ID int64 `json:"id,omitempty" yaml:"id,omitempty"`
 }
@@ -77,9 +96,13 @@ type CallMessage struct {
 }
 
 type Capabilities struct {
-	Gv1Migration bool `json:"gv1-migration,omitempty" yaml:"gv1-migration,omitempty"`
-	Gv2          bool `json:"gv2,omitempty" yaml:"gv2,omitempty"`
-	Storage      bool `json:"storage,omitempty" yaml:"storage,omitempty"`
+	AnnouncementGroup bool `json:"announcement_group,omitempty" yaml:"announcement_group,omitempty"`
+	ChangeNumber      bool `json:"change_number,omitempty" yaml:"change_number,omitempty"`
+	Gv1Migration      bool `json:"gv1-migration,omitempty" yaml:"gv1-migration,omitempty"`
+	Gv2               bool `json:"gv2,omitempty" yaml:"gv2,omitempty"` // this capability is deprecated and will always be true
+	SenderKey         bool `json:"sender_key,omitempty" yaml:"sender_key,omitempty"`
+	Storage           bool `json:"storage,omitempty" yaml:"storage,omitempty"`
+	Stories           bool `json:"stories,omitempty" yaml:"stories,omitempty"`
 }
 
 // ClientMessageWrapper: Wraps all incoming messages sent to the client after a v1 subscribe request is issued
@@ -115,10 +138,11 @@ type DeviceInfo struct {
 	Name     string `json:"name,omitempty" yaml:"name,omitempty"`
 }
 
-// FinishLinkRequest: After a linking URI has been requested, finish_link must be called with the session_id provided with the URI. it will return information about the new account once the linking process is completed by the other device.
+// FinishLinkRequest: After a linking URI has been requested, finish_link must be called with the session_id provided with the URI. it will return information about the new account once the linking process is completed by the other device and the new account is setup. Note that the account setup process can sometimes take some time, if rapid userfeedback is required after scanning, use wait_for_scan first, then finish setup with finish_link.
 type FinishLinkRequest struct {
 	Request
 	DeviceName string `json:"device_name,omitempty" yaml:"device_name,omitempty"`
+	Overwrite  bool   `json:"overwrite,omitempty" yaml:"overwrite,omitempty"` // overwrite existing account data if the phone number conflicts. false by default
 	SessionId  string `json:"session_id,omitempty" yaml:"session_id,omitempty"`
 }
 
@@ -134,12 +158,21 @@ type GetAllIdentities struct {
 	Account string `json:"account,omitempty" yaml:"account,omitempty"` // The account to interact with
 }
 
-// GetGroupRequest: Query the server for the latest state of a known group. If no account in signald is a member of the group (anymore), an error with error_type: 'UnknownGroupError' is returned.
+// GetGroupRequest: Query the server for the latest state of a known group. If the account is not a member of the group, an UnknownGroupError is returned.
 type GetGroupRequest struct {
 	Request
 	Account  string `json:"account,omitempty" yaml:"account,omitempty"` // The account to interact with
 	GroupID  string `json:"groupID,omitempty" yaml:"groupID,omitempty"`
 	Revision int32  `json:"revision,omitempty" yaml:"revision,omitempty"` // the latest known revision, default value (-1) forces fetch from server
+}
+
+// GetGroupRevisionPagesRequest: Query the server for group revision history. The history contains information about the changes between each revision and the user that made the change.
+type GetGroupRevisionPagesRequest struct {
+	Request
+	Account              string `json:"account,omitempty" yaml:"account,omitempty"`             // The account to interact with
+	FromRevision         int32  `json:"from_revision,omitempty" yaml:"from_revision,omitempty"` // The revision to start the pages from. Note that if this is lower than the revision you joined the group, an AuthorizationFailedError is returned.
+	GroupId              string `json:"group_id,omitempty" yaml:"group_id,omitempty"`
+	IncludeFirstRevision bool   `json:"include_first_revision,omitempty" yaml:"include_first_revision,omitempty"` // Whether to include the first state in the returned pages (default false)
 }
 
 // GetIdentitiesRequest: Get information about a known keys for a particular address
@@ -167,11 +200,52 @@ type GetServersRequest struct {
 	Request
 }
 
+type Gradient struct {
+	EndColor   string `json:"end_color,omitempty" yaml:"end_color,omitempty"`
+	StartColor string `json:"start_color,omitempty" yaml:"start_color,omitempty"`
+}
+
 // GroupAccessControl: group access control settings. Options for each controlled action are: UNKNOWN, ANY, MEMBER, ADMINISTRATOR, UNSATISFIABLE and UNRECOGNIZED
 type GroupAccessControl struct {
 	Attributes string `json:"attributes,omitempty" yaml:"attributes,omitempty"` // who can edit group info
 	Link       string `json:"link,omitempty" yaml:"link,omitempty"`             // UNSATISFIABLE when the group link is disabled, ADMINISTRATOR when the group link is enabled but an administrator must approve new members, ANY when the group link is enabled and no approval is required
 	Members    string `json:"members,omitempty" yaml:"members,omitempty"`       // who can add members
+}
+
+// GroupChange: Represents a group change made by a user. This can also represent request link invites. Only the fields relevant to the group change performed will be set. Note that in signald, group changes are currently only received from incoming messages from a message subscription.
+type GroupChange struct {
+	DeleteMembers            []*JsonAddress           `json:"delete_members,omitempty" yaml:"delete_members,omitempty"` // Represents users that have been removed from the group. This can be from admins removing users, or users choosing to leave the group
+	DeletePendingMembers     []*JsonAddress           `json:"delete_pending_members,omitempty" yaml:"delete_pending_members,omitempty"`
+	DeleteRequestingMembers  []*JsonAddress           `json:"delete_requesting_members,omitempty" yaml:"delete_requesting_members,omitempty"`
+	Editor                   *JsonAddress             `json:"editor,omitempty" yaml:"editor,omitempty"`                               // The user that made the change.
+	ModifiedProfileKeys      []*GroupMember           `json:"modified_profile_keys,omitempty" yaml:"modified_profile_keys,omitempty"` // Represents users that have rotated their profile key. Note that signald currently does not expose profile keys to clients. The joined revision property will always be 0 in this list.
+	ModifyMemberRoles        []*GroupMember           `json:"modify_member_roles,omitempty" yaml:"modify_member_roles,omitempty"`     // Represents users with their new, modified role.
+	NewAccessControl         *GroupAccessControl      `json:"new_access_control,omitempty" yaml:"new_access_control,omitempty"`       // If not null, then this group change modified one of the access controls. Some of the properties in here will be null.
+	NewAvatar                bool                     `json:"new_avatar,omitempty" yaml:"new_avatar,omitempty"`                       // Whether this group change changed the avatar.
+	NewBannedMembers         []*BannedGroupMember     `json:"new_banned_members,omitempty" yaml:"new_banned_members,omitempty"`
+	NewDescription           string                   `json:"new_description,omitempty" yaml:"new_description,omitempty"`
+	NewInviteLinkPassword    bool                     `json:"new_invite_link_password,omitempty" yaml:"new_invite_link_password,omitempty"`   // Whether this group change involved resetting the group invite link.
+	NewIsAnnouncementGroup   string                   `json:"new_is_announcement_group,omitempty" yaml:"new_is_announcement_group,omitempty"` // Whether this change affected the announcement group setting. Possible values are UNKNOWN, ENABLED or DISABLED
+	NewMembers               []*GroupMember           `json:"new_members,omitempty" yaml:"new_members,omitempty"`                             // Represents users have been added to the group. This can be from group members adding users, or a users joining via a group link that required no approval.
+	NewPendingMembers        []*GroupPendingMember    `json:"new_pending_members,omitempty" yaml:"new_pending_members,omitempty"`             // Represents a user that has been invited to the group by another user.
+	NewRequestingMembers     []*GroupRequestingMember `json:"new_requesting_members,omitempty" yaml:"new_requesting_members,omitempty"`       // Represents users that have requested to join the group via the group link. Note that members requesting to join might not necessarily have the list of users in the group, so they won't be able to send a peer-to-peer group update message to inform users of their request to join. Other users in the group may inform us that the revision has increased, but the members requesting access will have to be obtained from the server instead (which signald will handle). For now, a get_group request has to be made to get the users that have requested to join the group.
+	NewTimer                 int32                    `json:"new_timer,omitempty" yaml:"new_timer,omitempty"`                                 // New disappearing messages timer value.
+	NewTitle                 string                   `json:"new_title,omitempty" yaml:"new_title,omitempty"`
+	NewUnbannedMembers       []*BannedGroupMember     `json:"new_unbanned_members,omitempty" yaml:"new_unbanned_members,omitempty"`
+	PromotePendingMembers    []*GroupMember           `json:"promote_pending_members,omitempty" yaml:"promote_pending_members,omitempty"`
+	PromoteRequestingMembers []*GroupMember           `json:"promote_requesting_members,omitempty" yaml:"promote_requesting_members,omitempty"`
+	Revision                 int32                    `json:"revision,omitempty" yaml:"revision,omitempty"` // The group revision that this change brings the group to.
+}
+
+type GroupHistoryEntry struct {
+	Change *GroupChange     `json:"change,omitempty" yaml:"change,omitempty"`
+	Group  *JsonGroupV2Info `json:"group,omitempty" yaml:"group,omitempty"`
+}
+
+// GroupHistoryPage: The result of fetching a group's history along with paging data.
+type GroupHistoryPage struct {
+	PagingData *PagingData          `json:"paging_data,omitempty" yaml:"paging_data,omitempty"`
+	Results    []*GroupHistoryEntry `json:"results,omitempty" yaml:"results,omitempty"`
 }
 
 // GroupInfo: A generic type that is used when the group version is not known
@@ -189,13 +263,25 @@ type GroupLinkInfoRequest struct {
 
 type GroupList struct {
 	Groups       []*JsonGroupV2Info `json:"groups,omitempty" yaml:"groups,omitempty"`
-	LegacyGroups []*JsonGroupInfo   `json:"legacyGroups,omitempty" yaml:"legacyGroups,omitempty"`
+	LegacyGroups []*JsonGroupInfo   `json:"legacyGroups,omitempty" yaml:"legacyGroups,omitempty"` // list of legacy (v1) groups, no longer supported (will always be empty)
 }
 
 type GroupMember struct {
 	JoinedRevision int32  `json:"joined_revision,omitempty" yaml:"joined_revision,omitempty"`
 	Role           string `json:"role,omitempty" yaml:"role,omitempty"` // possible values are: UNKNOWN, DEFAULT, ADMINISTRATOR and UNRECOGNIZED
 	UUID           string `json:"uuid,omitempty" yaml:"uuid,omitempty"`
+}
+
+type GroupPendingMember struct {
+	AddedByUuid string `json:"added_by_uuid,omitempty" yaml:"added_by_uuid,omitempty"`
+	Role        string `json:"role,omitempty" yaml:"role,omitempty"` // possible values are: UNKNOWN, DEFAULT, ADMINISTRATOR and UNRECOGNIZED
+	Timestamp   int64  `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
+	UUID        string `json:"uuid,omitempty" yaml:"uuid,omitempty"`
+}
+
+type GroupRequestingMember struct {
+	Timestamp int64  `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
+	UUID      string `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
 
 type HangupMessage struct {
@@ -236,11 +322,19 @@ type IncomingMessage struct {
 	ServerReceiverTimestamp int64            `json:"server_receiver_timestamp,omitempty" yaml:"server_receiver_timestamp,omitempty"`
 	Source                  *JsonAddress     `json:"source,omitempty" yaml:"source,omitempty"`
 	SourceDevice            int32            `json:"source_device,omitempty" yaml:"source_device,omitempty"`
+	StoryMessage            *StoryMessage    `json:"story_message,omitempty" yaml:"story_message,omitempty"`
 	SyncMessage             *JsonSyncMessage `json:"sync_message,omitempty" yaml:"sync_message,omitempty"`
 	Timestamp               int64            `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
 	Type                    string           `json:"type,omitempty" yaml:"type,omitempty"`
 	TypingMessage           *TypingMessage   `json:"typing_message,omitempty" yaml:"typing_message,omitempty"`
 	UnidentifiedSender      bool             `json:"unidentified_sender,omitempty" yaml:"unidentified_sender,omitempty"`
+}
+
+// IsIdentifierRegisteredRequest: Determine whether an account identifier is registered on the Signal service.
+type IsIdentifierRegisteredRequest struct {
+	Request
+	Account    string `json:"account,omitempty" yaml:"account,omitempty"`       // The account to use to use
+	Identifier string `json:"identifier,omitempty" yaml:"identifier,omitempty"` // The UUID of an identifier to check if it is registered on Signal. This UUID is either a Phone Number Identity (PNI) or an Account Identity (ACI).
 }
 
 // JoinGroupRequest: Join a group using the a signal.group URL. Note that you must have a profile name set to join groups.
@@ -256,7 +350,7 @@ type JsonAddress struct {
 	UUID   string `json:"uuid,omitempty" yaml:"uuid,omitempty"` // A UUID, the unique identifier for a particular Signal account.
 }
 
-// JsonAttachment: represents a file attached to a message. When seding, only `filename` is required.
+// JsonAttachment: represents a file attached to a message. When sending, only `filename` is required.
 type JsonAttachment struct {
 	Blurhash       string `json:"blurhash,omitempty" yaml:"blurhash,omitempty"`
 	Caption        string `json:"caption,omitempty" yaml:"caption,omitempty"`
@@ -279,24 +373,26 @@ type JsonBlockedListMessage struct {
 }
 
 type JsonDataMessage struct {
-	Attachments      []*JsonAttachment   `json:"attachments,omitempty" yaml:"attachments,omitempty"` // files attached to the incoming message
-	Body             string              `json:"body,omitempty" yaml:"body,omitempty"`               // the text body of the incoming message.
-	Contacts         []*v0.SharedContact `json:"contacts,omitempty" yaml:"contacts,omitempty"`       // if the incoming message has a shared contact, the contact's information will be here
-	EndSession       bool                `json:"endSession,omitempty" yaml:"endSession,omitempty"`
-	ExpiresInSeconds int32               `json:"expiresInSeconds,omitempty" yaml:"expiresInSeconds,omitempty"`   // the expiry timer on the incoming message. Clients should delete records of the message within this number of seconds
-	Group            *JsonGroupInfo      `json:"group,omitempty" yaml:"group,omitempty"`                         // if the incoming message was sent to a v1 group, information about that group will be here
-	GroupV2          *JsonGroupV2Info    `json:"groupV2,omitempty" yaml:"groupV2,omitempty"`                     // if the incoming message was sent to a v2 group, basic identifying information about that group will be here. If group information changes, JsonGroupV2Info.revision is incremented. If the group revision is higher than previously seen, a client can retrieve the group information by calling get_group.
-	GroupCallUpdate  string              `json:"group_call_update,omitempty" yaml:"group_call_update,omitempty"` // the eraId string from a group call message update
-	Mentions         []*JsonMention      `json:"mentions,omitempty" yaml:"mentions,omitempty"`                   // list of mentions in the message
-	Payment          *Payment            `json:"payment,omitempty" yaml:"payment,omitempty"`                     // details about the MobileCoin payment attached to the message, if present
-	Previews         []*JsonPreview      `json:"previews,omitempty" yaml:"previews,omitempty"`                   // if the incoming message has a link preview, information about that preview will be here
-	ProfileKeyUpdate bool                `json:"profileKeyUpdate,omitempty" yaml:"profileKeyUpdate,omitempty"`
-	Quote            *JsonQuote          `json:"quote,omitempty" yaml:"quote,omitempty"`               // if the incoming message is a quote or reply to another message, this will contain information about that message
-	Reaction         *JsonReaction       `json:"reaction,omitempty" yaml:"reaction,omitempty"`         // if the message adds or removes a reaction to another message, this will indicate what change is being made
-	RemoteDelete     *RemoteDelete       `json:"remoteDelete,omitempty" yaml:"remoteDelete,omitempty"` // if the inbound message is deleting a previously sent message, indicates which message should be deleted
-	Sticker          *v0.JsonSticker     `json:"sticker,omitempty" yaml:"sticker,omitempty"`           // if the incoming message is a sticker, information about the sicker will be here
-	Timestamp        int64               `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`       // the timestamp that the message was sent at, according to the sender's device. This is used to uniquely identify this message for things like reactions and quotes.
-	ViewOnce         bool                `json:"viewOnce,omitempty" yaml:"viewOnce,omitempty"`         // indicates the message is a view once message. View once messages typically include no body and a single image attachment. Official Signal clients will prevent the user from saving the image, and once the user has viewed the image once they will destroy the image.
+	Attachments        []*JsonAttachment `json:"attachments,omitempty" yaml:"attachments,omitempty"` // files attached to the incoming message
+	Body               string            `json:"body,omitempty" yaml:"body,omitempty"`               // the text body of the incoming message.
+	Contacts           []*SharedContact  `json:"contacts,omitempty" yaml:"contacts,omitempty"`       // if the incoming message has a shared contact, the contact's information will be here
+	EndSession         bool              `json:"endSession,omitempty" yaml:"endSession,omitempty"`
+	ExpiresInSeconds   int32             `json:"expiresInSeconds,omitempty" yaml:"expiresInSeconds,omitempty"`         // the expiry timer on the incoming message. Clients should delete records of the message within this number of seconds
+	Group              *JsonGroupInfo    `json:"group,omitempty" yaml:"group,omitempty"`                               // if the incoming message was sent to a v1 group, information about that group will be here
+	GroupV2            *JsonGroupV2Info  `json:"groupV2,omitempty" yaml:"groupV2,omitempty"`                           // if the incoming message was sent to a v2 group, basic identifying information about that group will be here. If group information changes, JsonGroupV2Info.revision is incremented. If the group revision is higher than previously seen, a client can retrieve the group information by calling get_group.
+	GroupCallUpdate    string            `json:"group_call_update,omitempty" yaml:"group_call_update,omitempty"`       // the eraId string from a group call message update
+	IsExpirationUpdate bool              `json:"is_expiration_update,omitempty" yaml:"is_expiration_update,omitempty"` // whether or not this message changes the expiresInSeconds value for the whole chat. Some messages (remote deletes, reactions, etc) will have expiresInSeconds=0 even though the chat has disappearing messages enabled.
+	Mentions           []*JsonMention    `json:"mentions,omitempty" yaml:"mentions,omitempty"`                         // list of mentions in the message
+	Payment            *Payment          `json:"payment,omitempty" yaml:"payment,omitempty"`                           // details about the MobileCoin payment attached to the message, if present
+	Previews           []*JsonPreview    `json:"previews,omitempty" yaml:"previews,omitempty"`                         // if the incoming message has a link preview, information about that preview will be here
+	ProfileKeyUpdate   bool              `json:"profileKeyUpdate,omitempty" yaml:"profileKeyUpdate,omitempty"`
+	Quote              *JsonQuote        `json:"quote,omitempty" yaml:"quote,omitempty"`               // if the incoming message is a quote or reply to another message, this will contain information about that message
+	Reaction           *JsonReaction     `json:"reaction,omitempty" yaml:"reaction,omitempty"`         // if the message adds or removes a reaction to another message, this will indicate what change is being made
+	RemoteDelete       *RemoteDelete     `json:"remoteDelete,omitempty" yaml:"remoteDelete,omitempty"` // if the inbound message is deleting a previously sent message, indicates which message should be deleted
+	Sticker            *v0.JsonSticker   `json:"sticker,omitempty" yaml:"sticker,omitempty"`           // if the incoming message is a sticker, information about the sicker will be here
+	StoryContext       *StoryContext     `json:"story_context,omitempty" yaml:"story_context,omitempty"`
+	Timestamp          int64             `json:"timestamp,omitempty" yaml:"timestamp,omitempty"` // the timestamp that the message was sent at, according to the sender's device. This is used to uniquely identify this message for things like reactions and quotes.
+	ViewOnce           bool              `json:"viewOnce,omitempty" yaml:"viewOnce,omitempty"`   // indicates the message is a view once message. View once messages typically include no body and a single image attachment. Official Signal clients will prevent the user from saving the image, and once the user has viewed the image once they will destroy the image.
 }
 
 // JsonGroupInfo: information about a legacy group
@@ -320,20 +416,23 @@ type JsonGroupJoinInfo struct {
 
 // JsonGroupV2Info: Information about a Signal group
 type JsonGroupV2Info struct {
-	AccessControl       *GroupAccessControl `json:"accessControl,omitempty" yaml:"accessControl,omitempty"` // current access control settings for this group
-	Announcements       string              `json:"announcements,omitempty" yaml:"announcements,omitempty"` // indicates if the group is an announcements group. Only admins are allowed to send messages to announcements groups. Options are UNKNOWN, ENABLED or DISABLED
-	Avatar              string              `json:"avatar,omitempty" yaml:"avatar,omitempty"`               // path to the group's avatar on local disk, if available
-	Description         string              `json:"description,omitempty" yaml:"description,omitempty"`
-	ID                  string              `json:"id,omitempty" yaml:"id,omitempty"`
-	InviteLink          string              `json:"inviteLink,omitempty" yaml:"inviteLink,omitempty"`     // the signal.group link, if applicable
-	MemberDetail        []*GroupMember      `json:"memberDetail,omitempty" yaml:"memberDetail,omitempty"` // detailed member list
-	Members             []*JsonAddress      `json:"members,omitempty" yaml:"members,omitempty"`
-	PendingMemberDetail []*GroupMember      `json:"pendingMemberDetail,omitempty" yaml:"pendingMemberDetail,omitempty"` // detailed pending member list
-	PendingMembers      []*JsonAddress      `json:"pendingMembers,omitempty" yaml:"pendingMembers,omitempty"`
-	RequestingMembers   []*JsonAddress      `json:"requestingMembers,omitempty" yaml:"requestingMembers,omitempty"`
-	Revision            int32               `json:"revision,omitempty" yaml:"revision,omitempty"`
-	Timer               int32               `json:"timer,omitempty" yaml:"timer,omitempty"`
-	Title               string              `json:"title,omitempty" yaml:"title,omitempty"`
+	AccessControl       *GroupAccessControl  `json:"accessControl,omitempty" yaml:"accessControl,omitempty"` // current access control settings for this group
+	Announcements       string               `json:"announcements,omitempty" yaml:"announcements,omitempty"` // indicates if the group is an announcements group. Only admins are allowed to send messages to announcements groups. Options are UNKNOWN, ENABLED or DISABLED
+	Avatar              string               `json:"avatar,omitempty" yaml:"avatar,omitempty"`               // path to the group's avatar on local disk, if available
+	BannedMembers       []*BannedGroupMember `json:"banned_members,omitempty" yaml:"banned_members,omitempty"`
+	Description         string               `json:"description,omitempty" yaml:"description,omitempty"`
+	GroupChange         *GroupChange         `json:"group_change,omitempty" yaml:"group_change,omitempty"` // Represents a peer-to-peer group change done by a user. Will not be set if the group change signature fails verification. This is usually only set inside of incoming messages.
+	ID                  string               `json:"id,omitempty" yaml:"id,omitempty"`
+	InviteLink          string               `json:"inviteLink,omitempty" yaml:"inviteLink,omitempty"`     // the signal.group link, if applicable
+	MemberDetail        []*GroupMember       `json:"memberDetail,omitempty" yaml:"memberDetail,omitempty"` // detailed member list
+	Members             []*JsonAddress       `json:"members,omitempty" yaml:"members,omitempty"`
+	PendingMemberDetail []*GroupMember       `json:"pendingMemberDetail,omitempty" yaml:"pendingMemberDetail,omitempty"` // detailed pending member list
+	PendingMembers      []*JsonAddress       `json:"pendingMembers,omitempty" yaml:"pendingMembers,omitempty"`
+	Removed             bool                 `json:"removed,omitempty" yaml:"removed,omitempty"` // will be set to true for incoming messages to indicate the user has been removed from the group
+	RequestingMembers   []*JsonAddress       `json:"requestingMembers,omitempty" yaml:"requestingMembers,omitempty"`
+	Revision            int32                `json:"revision,omitempty" yaml:"revision,omitempty"`
+	Timer               int32                `json:"timer,omitempty" yaml:"timer,omitempty"`
+	Title               string               `json:"title,omitempty" yaml:"title,omitempty"`
 }
 
 type JsonMention struct {
@@ -342,31 +441,11 @@ type JsonMention struct {
 	UUID   string `json:"uuid,omitempty" yaml:"uuid,omitempty"`     // The UUID of the account being mentioned
 }
 
-type JsonMessageEnvelope struct {
-	CallMessage              *v0.JsonCallMessage    `json:"callMessage,omitempty" yaml:"callMessage,omitempty"`
-	DataMessage              *JsonDataMessage       `json:"dataMessage,omitempty" yaml:"dataMessage,omitempty"`
-	HasContent               bool                   `json:"hasContent,omitempty" yaml:"hasContent,omitempty"`
-	HasLegacyMessage         bool                   `json:"hasLegacyMessage,omitempty" yaml:"hasLegacyMessage,omitempty"`
-	IsUnidentifiedSender     bool                   `json:"isUnidentifiedSender,omitempty" yaml:"isUnidentifiedSender,omitempty"`
-	Receipt                  *v0.JsonReceiptMessage `json:"receipt,omitempty" yaml:"receipt,omitempty"`
-	Relay                    string                 `json:"relay,omitempty" yaml:"relay,omitempty"`
-	ServerDeliveredTimestamp int64                  `json:"serverDeliveredTimestamp,omitempty" yaml:"serverDeliveredTimestamp,omitempty"`
-	ServerTimestamp          int64                  `json:"serverTimestamp,omitempty" yaml:"serverTimestamp,omitempty"`
-	Source                   *JsonAddress           `json:"source,omitempty" yaml:"source,omitempty"`
-	SourceDevice             int32                  `json:"sourceDevice,omitempty" yaml:"sourceDevice,omitempty"`
-	SyncMessage              *JsonSyncMessage       `json:"syncMessage,omitempty" yaml:"syncMessage,omitempty"`
-	Timestamp                int64                  `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
-	TimestampISO             string                 `json:"timestampISO,omitempty" yaml:"timestampISO,omitempty"`
-	Type                     string                 `json:"type,omitempty" yaml:"type,omitempty"`
-	Typing                   *v0.JsonTypingMessage  `json:"typing,omitempty" yaml:"typing,omitempty"`
-	Username                 string                 `json:"username,omitempty" yaml:"username,omitempty"`
-	UUID                     string                 `json:"uuid,omitempty" yaml:"uuid,omitempty"`
-}
-
+// JsonMessageRequestResponseMessage: Responses to message requests from unknown users or groups
 type JsonMessageRequestResponseMessage struct {
 	GroupId string       `json:"groupId,omitempty" yaml:"groupId,omitempty"`
 	Person  *JsonAddress `json:"person,omitempty" yaml:"person,omitempty"`
-	Type    string       `json:"type,omitempty" yaml:"type,omitempty"`
+	Type    string       `json:"type,omitempty" yaml:"type,omitempty"` // One of UNKNOWN, ACCEPT, DELETE, BLOCK, BLOCK_AND_DELETE, UNBLOCK_AND_ACCEPT
 }
 
 // JsonPreview: metadata about one of the links in a message
@@ -413,6 +492,7 @@ type JsonSentTranscriptMessage struct {
 	ExpirationStartTimestamp int64             `json:"expirationStartTimestamp,omitempty" yaml:"expirationStartTimestamp,omitempty"`
 	IsRecipientUpdate        bool              `json:"isRecipientUpdate,omitempty" yaml:"isRecipientUpdate,omitempty"`
 	Message                  *JsonDataMessage  `json:"message,omitempty" yaml:"message,omitempty"`
+	Story                    *StoryMessage     `json:"story,omitempty" yaml:"story,omitempty"`
 	Timestamp                int64             `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
 	UnidentifiedStatus       map[string]string `json:"unidentifiedStatus,omitempty" yaml:"unidentifiedStatus,omitempty"`
 }
@@ -503,6 +583,11 @@ type OfferMessage struct {
 	Type   string `json:"type,omitempty" yaml:"type,omitempty"`
 }
 
+type PagingData struct {
+	HasMorePages     bool  `json:"has_more_pages,omitempty" yaml:"has_more_pages,omitempty"`
+	NextPageRevision int32 `json:"next_page_revision,omitempty" yaml:"next_page_revision,omitempty"`
+}
+
 // Payment: details about a MobileCoin payment
 type Payment struct {
 	Note    string `json:"note,omitempty" yaml:"note,omitempty"`       // note attached to the payment
@@ -515,13 +600,15 @@ type Profile struct {
 	Address           *JsonAddress  `json:"address,omitempty" yaml:"address,omitempty"`
 	Avatar            string        `json:"avatar,omitempty" yaml:"avatar,omitempty"` // path to avatar on local disk
 	Capabilities      *Capabilities `json:"capabilities,omitempty" yaml:"capabilities,omitempty"`
-	Color             string        `json:"color,omitempty" yaml:"color,omitempty"` // color of the chat with this user
+	Color             string        `json:"color,omitempty" yaml:"color,omitempty"`               // color of the chat with this user
+	ContactName       string        `json:"contact_name,omitempty" yaml:"contact_name,omitempty"` // The user's name from local contact names
 	Emoji             string        `json:"emoji,omitempty" yaml:"emoji,omitempty"`
 	ExpirationTime    int32         `json:"expiration_time,omitempty" yaml:"expiration_time,omitempty"`
 	InboxPosition     int32         `json:"inbox_position,omitempty" yaml:"inbox_position,omitempty"`
 	MobilecoinAddress string        `json:"mobilecoin_address,omitempty" yaml:"mobilecoin_address,omitempty"` // *base64-encoded* mobilecoin address. Note that this is not the traditional MobileCoin address encoding. Clients are responsible for converting between MobileCoin's custom base58 on the user-facing side and base64 encoding on the signald side. If unset, null or an empty string, will empty the profile payment address
 	Name              string        `json:"name,omitempty" yaml:"name,omitempty"`                             // The user's name from local contact names if available, or if not in contact list their Signal profile name
 	ProfileName       string        `json:"profile_name,omitempty" yaml:"profile_name,omitempty"`             // The user's Signal profile name
+	VisibleBadgeIds   []string      `json:"visible_badge_ids,omitempty" yaml:"visible_badge_ids,omitempty"`   // currently unclear how these work, as they are not available in the production Signal apps
 }
 
 type ProfileList struct {
@@ -549,6 +636,7 @@ type ReceiptMessage struct {
 type RefuseMembershipRequest struct {
 	Request
 	Account string         `json:"account,omitempty" yaml:"account,omitempty"` // The account to interact with
+	AlsoBan bool           `json:"also_ban,omitempty" yaml:"also_ban,omitempty"`
 	GroupId string         `json:"group_id,omitempty" yaml:"group_id,omitempty"`
 	Members []*JsonAddress `json:"members,omitempty" yaml:"members,omitempty"` // list of requesting members to refuse
 }
@@ -612,6 +700,7 @@ type RequestSyncRequest struct {
 	Configuration bool   `json:"configuration,omitempty" yaml:"configuration,omitempty"` // request configuration sync (default true)
 	Contacts      bool   `json:"contacts,omitempty" yaml:"contacts,omitempty"`           // request contact sync (default true)
 	Groups        bool   `json:"groups,omitempty" yaml:"groups,omitempty"`               // request group sync (default true)
+	Keys          bool   `json:"keys,omitempty" yaml:"keys,omitempty"`                   // request storage service keys
 }
 
 // ResetSessionRequest: reset a session with a particular user
@@ -640,16 +729,17 @@ type SendPaymentRequest struct {
 
 type SendRequest struct {
 	Request
-	Attachments      []*v0.JsonAttachment `json:"attachments,omitempty" yaml:"attachments,omitempty"`
-	Members          []*JsonAddress       `json:"members,omitempty" yaml:"members,omitempty"` // Optionally set to a sub-set of group members. Ignored if recipientGroupId isn't specified
-	Mentions         []*JsonMention       `json:"mentions,omitempty" yaml:"mentions,omitempty"`
-	MessageBody      string               `json:"messageBody,omitempty" yaml:"messageBody,omitempty"`
-	Previews         []*JsonPreview       `json:"previews,omitempty" yaml:"previews,omitempty"`
-	Quote            *JsonQuote           `json:"quote,omitempty" yaml:"quote,omitempty"`
-	RecipientAddress *JsonAddress         `json:"recipientAddress,omitempty" yaml:"recipientAddress,omitempty"`
-	RecipientGroupID string               `json:"recipientGroupId,omitempty" yaml:"recipientGroupId,omitempty"`
-	Timestamp        int64                `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
-	Username         string               `json:"username,omitempty" yaml:"username,omitempty"`
+	Account          string            `json:"account,omitempty" yaml:"account,omitempty"`
+	Attachments      []*JsonAttachment `json:"attachments,omitempty" yaml:"attachments,omitempty"`
+	Members          []*JsonAddress    `json:"members,omitempty" yaml:"members,omitempty"` // Optionally set to a sub-set of group members. Ignored if recipientGroupId isn't specified
+	Mentions         []*JsonMention    `json:"mentions,omitempty" yaml:"mentions,omitempty"`
+	MessageBody      string            `json:"messageBody,omitempty" yaml:"messageBody,omitempty"`
+	Previews         []*JsonPreview    `json:"previews,omitempty" yaml:"previews,omitempty"`
+	Quote            *JsonQuote        `json:"quote,omitempty" yaml:"quote,omitempty"`
+	RecipientAddress *JsonAddress      `json:"recipientAddress,omitempty" yaml:"recipientAddress,omitempty"`
+	RecipientGroupID string            `json:"recipientGroupId,omitempty" yaml:"recipientGroupId,omitempty"`
+	Timestamp        int64             `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
+	Username         string            `json:"username,omitempty" yaml:"username,omitempty"`
 }
 
 type SendResponse struct {
@@ -662,6 +752,14 @@ type SendSuccess struct {
 	Duration     int64   `json:"duration,omitempty" yaml:"duration,omitempty"`
 	NeedsSync    bool    `json:"needsSync,omitempty" yaml:"needsSync,omitempty"`
 	Unidentified bool    `json:"unidentified,omitempty" yaml:"unidentified,omitempty"`
+}
+
+// SendSyncMessageRequest: Sends a sync message to the account's devices
+type SendSyncMessageRequest struct {
+	Request
+	Account                string                             `json:"account,omitempty" yaml:"account,omitempty"`
+	MessageRequestResponse *JsonMessageRequestResponseMessage `json:"message_request_response,omitempty" yaml:"message_request_response,omitempty"` // This can be set to indicate to other devices about a response to an incoming message request from an unknown user or group. Warning: Using the BLOCK and BLOCK_AND_DELETE options relies on other devices to do the blocking, and it does not make you leave the group!
+	ViewOnceOpenMessage    *JsonViewOnceOpenMessage           `json:"view_once_open_message,omitempty" yaml:"view_once_open_message,omitempty"`     // This can be set to indicate to other devices about having viewed a view-once message.
 }
 
 // Server: a Signal server
@@ -692,7 +790,7 @@ type ServerList struct {
 	Servers []*Server `json:"servers,omitempty" yaml:"servers,omitempty"`
 }
 
-// SetDeviceNameRequest: set this device's name. This will show up on the mobile device on the same account under
+// SetDeviceNameRequest: set this device's name. This will show up on the mobile device on the same account under settings -> linked devices
 type SetDeviceNameRequest struct {
 	Request
 	Account    string `json:"account,omitempty" yaml:"account,omitempty"`         // The account to set the device name of
@@ -710,12 +808,77 @@ type SetExpirationRequest struct {
 
 type SetProfile struct {
 	Request
-	About             string `json:"about,omitempty" yaml:"about,omitempty"`                           // an optional about string. If unset, null or an empty string will unset profile about field
-	Account           string `json:"account,omitempty" yaml:"account,omitempty"`                       // The phone number of the account to use
-	AvatarFile        string `json:"avatarFile,omitempty" yaml:"avatarFile,omitempty"`                 // Path to new profile avatar file. If unset or null, unset the profile avatar
-	Emoji             string `json:"emoji,omitempty" yaml:"emoji,omitempty"`                           // an optional single emoji character. If unset, null or an empty string will unset profile emoji
-	MobilecoinAddress string `json:"mobilecoin_address,omitempty" yaml:"mobilecoin_address,omitempty"` // an optional *base64-encoded* MobileCoin address to set in the profile. Note that this is not the traditional MobileCoin address encoding, which is custom. Clients are responsible for converting between MobileCoin's custom base58 on the user-facing side and base64 encoding on the signald side. If unset, null or an empty string, will empty the profile payment address
-	Name              string `json:"name,omitempty" yaml:"name,omitempty"`                             // New profile name. Set to empty string for no profile name
+	About             string   `json:"about,omitempty" yaml:"about,omitempty"`                           // Change the 'about' profile field
+	Account           string   `json:"account,omitempty" yaml:"account,omitempty"`                       // The phone number of the account to use
+	AvatarFile        string   `json:"avatarFile,omitempty" yaml:"avatarFile,omitempty"`                 // Path to new profile avatar file. If unset or null, unset the profile avatar
+	Emoji             string   `json:"emoji,omitempty" yaml:"emoji,omitempty"`                           // Change the profile emoji
+	MobilecoinAddress string   `json:"mobilecoin_address,omitempty" yaml:"mobilecoin_address,omitempty"` // Change the profile payment address. Payment address must be a *base64-encoded* MobileCoin address. Note that this is not the traditional MobileCoin address encoding, which is custom. Clients are responsible for converting between MobileCoin's custom base58 on the user-facing side and base64 encoding on the signald side.
+	Name              string   `json:"name,omitempty" yaml:"name,omitempty"`                             // Change the profile name
+	VisibleBadgeIds   []string `json:"visible_badge_ids,omitempty" yaml:"visible_badge_ids,omitempty"`   // configure visible badge IDs
+}
+
+type SharedContact struct {
+	Address      []*SharedContactAddress `json:"address,omitempty" yaml:"address,omitempty"`           // the physical addresses of the shared contact
+	Avatar       *SharedContactAvatar    `json:"avatar,omitempty" yaml:"avatar,omitempty"`             // the profile picture/avatar of the shared contact
+	Email        []*SharedContactEmail   `json:"email,omitempty" yaml:"email,omitempty"`               // the email addresses of the shared contact
+	Name         *SharedContactName      `json:"name,omitempty" yaml:"name,omitempty"`                 // the name of the shared contact
+	Organization string                  `json:"organization,omitempty" yaml:"organization,omitempty"` // the organization (e.g. workplace) of the shared contact
+	Phone        []*SharedContactPhone   `json:"phone,omitempty" yaml:"phone,omitempty"`               // the phone numbers of the shared contact
+}
+
+type SharedContactAddress struct {
+	City         string `json:"city,omitempty" yaml:"city,omitempty"`
+	Country      string `json:"country,omitempty" yaml:"country,omitempty"`
+	Label        string `json:"label,omitempty" yaml:"label,omitempty"`
+	Neighborhood string `json:"neighborhood,omitempty" yaml:"neighborhood,omitempty"`
+	Pobox        string `json:"pobox,omitempty" yaml:"pobox,omitempty"`
+	Postcode     string `json:"postcode,omitempty" yaml:"postcode,omitempty"`
+	Region       string `json:"region,omitempty" yaml:"region,omitempty"`
+	Street       string `json:"street,omitempty" yaml:"street,omitempty"`
+	Type         string `json:"type,omitempty" yaml:"type,omitempty"` // the type of address (options: HOME, WORK, CUSTOM)
+}
+
+type SharedContactAvatar struct {
+	Attachment *JsonAttachment `json:"attachment,omitempty" yaml:"attachment,omitempty"`
+	IsProfile  bool            `json:"is_profile,omitempty" yaml:"is_profile,omitempty"`
+}
+
+type SharedContactEmail struct {
+	Label string `json:"label,omitempty" yaml:"label,omitempty"` // the type label when type is CUSTOM
+	Type  string `json:"type,omitempty" yaml:"type,omitempty"`   // the type of email (options: HOME, WORK, MOBILE, CUSTOM)
+	Value string `json:"value,omitempty" yaml:"value,omitempty"` // the email address
+}
+
+type SharedContactName struct {
+	Display string `json:"display,omitempty" yaml:"display,omitempty"` // the full name that should be displayed
+	Family  string `json:"family,omitempty" yaml:"family,omitempty"`   // family name (surname)
+	Given   string `json:"given,omitempty" yaml:"given,omitempty"`     // given name
+	Middle  string `json:"middle,omitempty" yaml:"middle,omitempty"`   // middle name
+	Prefix  string `json:"prefix,omitempty" yaml:"prefix,omitempty"`
+	Suffix  string `json:"suffix,omitempty" yaml:"suffix,omitempty"`
+}
+
+type SharedContactPhone struct {
+	Label string `json:"label,omitempty" yaml:"label,omitempty"` // the type label when type is CUSTOM
+	Type  string `json:"type,omitempty" yaml:"type,omitempty"`   // the type of phone (options: HOME, WORK, MOBILE, CUSTOM)
+	Value string `json:"value,omitempty" yaml:"value,omitempty"` // the phone number
+}
+
+// StorageChange: Broadcast to subscribed clients when there is a state change from the storage service
+type StorageChange struct {
+	Version int64 `json:"version,omitempty" yaml:"version,omitempty"` // Seems to behave like the group version numbers and increments every time the state changes
+}
+
+type StoryContext struct {
+	Author        string `json:"author,omitempty" yaml:"author,omitempty"`
+	SentTimestamp int64  `json:"sent_timestamp,omitempty" yaml:"sent_timestamp,omitempty"`
+}
+
+type StoryMessage struct {
+	AllowReplies bool             `json:"allow_replies,omitempty" yaml:"allow_replies,omitempty"`
+	File         *JsonAttachment  `json:"file,omitempty" yaml:"file,omitempty"`
+	Group        *JsonGroupV2Info `json:"group,omitempty" yaml:"group,omitempty"`
+	Text         *TextAttachment  `json:"text,omitempty" yaml:"text,omitempty"`
 }
 
 type SubmitChallengeRequest struct {
@@ -729,6 +892,16 @@ type SubmitChallengeRequest struct {
 type SubscribeRequest struct {
 	Request
 	Account string `json:"account,omitempty" yaml:"account,omitempty"` // The account to subscribe to incoming message for
+}
+
+type TextAttachment struct {
+	BackgroundColor     string       `json:"background_color,omitempty" yaml:"background_color,omitempty"`
+	BackgroundGradient  *Gradient    `json:"background_gradient,omitempty" yaml:"background_gradient,omitempty"`
+	Preview             *JsonPreview `json:"preview,omitempty" yaml:"preview,omitempty"`
+	Style               string       `json:"style,omitempty" yaml:"style,omitempty"`
+	Text                string       `json:"text,omitempty" yaml:"text,omitempty"`
+	TextBackgroundColor string       `json:"text_background_color,omitempty" yaml:"text_background_color,omitempty"`
+	TextForegroundColor string       `json:"text_foreground_color,omitempty" yaml:"text_foreground_color,omitempty"`
 }
 
 // TrustRequest: Trust another user's safety number using either the QR code data or the safety number text
@@ -755,6 +928,14 @@ type TypingRequest struct {
 	Group   string       `json:"group,omitempty" yaml:"group,omitempty"`
 	Typing  bool         `json:"typing,omitempty" yaml:"typing,omitempty"`
 	When    int64        `json:"when,omitempty" yaml:"when,omitempty"`
+}
+
+// UnbanUserRequest: Unbans users from a group.
+type UnbanUserRequest struct {
+	Request
+	Account string         `json:"account,omitempty" yaml:"account,omitempty"` // The account to interact with
+	GroupId string         `json:"group_id,omitempty" yaml:"group_id,omitempty"`
+	Users   []*JsonAddress `json:"users,omitempty" yaml:"users,omitempty"` // List of users to unban
 }
 
 // UnsubscribeRequest: See subscribe for more info
@@ -799,6 +980,12 @@ type VerifyRequest struct {
 
 type VersionRequest struct {
 	Request
+}
+
+// WaitForScanRequest: An optional part of the linking process. Intended to be called after displaying the QR code, will return quickly after the user scans the QR code. finish_link must be called after wait_for_scan returns a non-error
+type WaitForScanRequest struct {
+	Request
+	SessionId string `json:"session_id,omitempty" yaml:"session_id,omitempty"`
 }
 
 // WebSocketConnectionState: indicates when the websocket connection state to the signal server has changed

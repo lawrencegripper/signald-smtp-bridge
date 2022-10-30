@@ -29,7 +29,6 @@ import (
 	"time"
 
 	client_protocol "gitlab.com/signald/signald-go/signald/client-protocol"
-	"gitlab.com/signald/signald-go/signald/client-protocol/v0"
 )
 
 const (
@@ -100,8 +99,12 @@ func (s *Signald) connect() error {
 	return nil
 }
 
+func (s *Signald) Close() error {
+	return s.socket.Close()
+}
+
 // Listen listens for events from signald
-func (s *Signald) Listen(c chan v0.LegacyResponse) {
+func (s *Signald) Listen(c chan client_protocol.BasicResponse) {
 	for {
 		msg, err := s.readNext()
 		if err == io.EOF {
@@ -126,13 +129,8 @@ func (s *Signald) Listen(c chan v0.LegacyResponse) {
 			subscribers <- msg
 		}
 
-		if c != nil {
-			legacyResponse := v0.LegacyResponse{ID: msg.ID, Type: msg.Type}
-			if err := json.Unmarshal(msg.Data, &legacyResponse.Data); err != nil {
-				log.Println("signald-go receive error: ", err)
-			} else {
-				c <- legacyResponse
-			}
+		if c != nil && !(msg.ID == "" && msg.Type == "version") {
+			c <- msg
 		}
 	}
 }
