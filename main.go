@@ -203,7 +203,7 @@ func captureHTMLEmailAsPDF(session *Session) (string, error) {
 	return filePath, nil
 }
 
-var phoneNumberRegex, _ = regexp.Compile("\\+44[0-9]{10}")
+var phoneNumberRegex, _ = regexp.Compile("\\+?44[0-9]{10}")
 
 func sendSignalMessage(session *Session) error {
 	var pdfFile string
@@ -246,11 +246,12 @@ func sendSignalMessage(session *Session) error {
 	}
 
 	recipient := mustGetSignalUserOrGroupFromAddress(session.To)
-	if strings.HasPrefix(recipient, "+") {
-		sendTo := os.Getenv("SEND_TO")
-		if phoneNumberRegex.MatchString(recipient) {
-			sendTo = recipient
+
+	if phoneNumberRegex.MatchString(recipient) {
+		if !strings.HasPrefix(recipient, "+") {
+			recipient = "+" + recipient
 		}
+		sendTo := recipient
 		req.RecipientAddress = &v1.JsonAddress{Number: sendTo}
 		log.Printf("Sending to user: %q", sendTo)
 	} else {
