@@ -245,18 +245,21 @@ func sendSignalMessage(session *Session) error {
 		}
 	}
 
-	recipient := mustGetSignalUserOrGroupFromAddress(session.To)
+	if strings.Contains(session.To, "@signal.bridge") {
+		recipient := mustGetSignalUserOrGroupFromAddress(session.To)
 
-	if phoneNumberRegex.MatchString(recipient) {
-		if !strings.HasPrefix(recipient, "+") {
-			recipient = "+" + recipient
+		if phoneNumberRegex.MatchString(recipient) {
+			if !strings.HasPrefix(recipient, "+") {
+				recipient = "+" + recipient
+			}
+			req.RecipientAddress = &v1.JsonAddress{Number: recipient}
+			log.Printf("Sending to user: %q", recipient)
+		} else {
+			req.RecipientGroupID = recipient
+			log.Printf("Sending to group: %q", recipient)
 		}
-		sendTo := recipient
-		req.RecipientAddress = &v1.JsonAddress{Number: sendTo}
-		log.Printf("Sending to user: %q", sendTo)
 	} else {
-		req.RecipientGroupID = recipient
-		log.Printf("Sending to group: %q", recipient)
+		req.RecipientAddress = &v1.JsonAddress{Number: os.Getenv("SEND_TO")}
 	}
 
 	if os.Getenv("DEBUG") == "TRUE" {
