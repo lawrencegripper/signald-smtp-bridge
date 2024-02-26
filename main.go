@@ -33,7 +33,7 @@ func init() {
 		SocketPath: "/signald/signald.sock",
 	}
 
-	signaldResponses := make(chan clientProtocol.BasicResponse, 1)
+	signaldResponses := make(chan clientProtocol.BasicResponse, 2)
 	err := signaldClient.Connect()
 	if err != nil {
 		panic(err)
@@ -47,7 +47,7 @@ func init() {
 			log.Printf("signald response data: %+v\n", string(response.Data))
 			log.Printf("signald response error: %+v\n", string(response.Error))
 
-			if closed {
+			if !closed {
 				panic("signald connection closed")
 			}
 		}
