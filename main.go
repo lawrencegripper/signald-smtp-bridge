@@ -6,20 +6,21 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/mail"
 	"os"
 	"regexp"
 	"strings"
 	"time"
 
+	"io/fs"
+
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/emersion/go-smtp"
 	"github.com/google/uuid"
-	"github.com/marcospgmelo/parsemail"
 	"gitlab.com/signald/signald-go/signald"
 	clientProtocol "gitlab.com/signald/signald-go/signald/client-protocol"
 	v1 "gitlab.com/signald/signald-go/signald/client-protocol/v1"
@@ -48,6 +49,8 @@ func init() {
 			}
 
 			log.Printf("signald response: %+v\n", response)
+			log.Printf("signald response data: %+v\n", string(response.Data))
+			log.Printf("signald response error: %+v\n", string(response.Error))
 		}
 	}()
 }
@@ -64,19 +67,21 @@ type Session struct {
 	From        string
 	To          string
 	MessageData string
-	Email       *parsemail.Email
+	Body        string
+	Subject     string
+	ContentType string
 	Anonymous   bool
 }
 
 func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
 	log.Println("Mail from:", from)
-	s.From = from
+	// s.From = from
 	return nil
 }
 
 func (s *Session) Rcpt(to string, opts *smtp.RcptOptions) error {
 	log.Println("Rcpt to:", to)
-	s.To = to
+	// s.To = to
 	return nil
 }
 
@@ -150,16 +155,21 @@ func mustGetSignalUserOrGroupFromAddress(address string) string {
 }
 
 func parseEmail(session *Session) error { // this reads an email message
-	email, err := parsemail.Parse(strings.NewReader(session.MessageData)) // returns Email struct and error
+	email, err := mail.ReadMessage(strings.NewReader(session.MessageData)) // returns Email struct and error
 	if err != nil {
 		return err
 	}
 
-	log.Println("Subject: " + email.Subject)
-	log.Println(email.From)
-	log.Println(email.To)
-
-	session.Email = &email
+	log.Println("Subject: " + email.Header.Get("Subject"))
+	session.From = email.Header.Get("From")
+	session.To = email.Header.Get("To")
+	session.Subject = email.Header.Get("Subject")
+	session.ContentType = email.Header.Get("Content-type")
+	bodyBytes, err := io.ReadAll(email.Body)
+	if err != nil {
+		log.Printf("Failed to read body: %v", err)
+	}
+	session.Body = string(bodyBytes)
 
 	return nil
 }
@@ -184,7 +194,7 @@ func captureHTMLEmailAsPDF(session *Session) (string, error) {
 	ts := httptest.NewServer(
 		http.HandlerFunc(
 			func(w http.ResponseWriter, r *http.Request) {
-				_, _ = fmt.Fprint(w, session.Email.HTMLBody)
+				_, _ = fmt.Fprint(w, session.Body)
 			},
 		),
 	)
@@ -214,7 +224,7 @@ func captureHTMLEmailAsPDF(session *Session) (string, error) {
 
 	filePath := fmt.Sprintf("/signald/%semail.pdf", uuid.New().String())
 	log.Printf("PDF using file: %q", filePath)
-	if err := ioutil.WriteFile(filePath, buf, 0777); err != nil {
+	if err := os.WriteFile(filePath, buf, fs.FileMode(0777)); err != nil {
 		return "", err
 	}
 	return filePath, nil
@@ -225,7 +235,7 @@ var phoneNumberRegex, _ = regexp.Compile("\\+?44[0-9]{10}")
 func sendSignalMessage(session *Session) error {
 	var pdfFile string
 	var err error
-	if session.Email.ContentType != "text/plain" {
+	if session.ContentType != "text/plain" {
 		log.Println("Converting HTML mail to pdf file")
 		pdfFile, err = captureHTMLEmailAsPDF(session)
 		if err != nil {
@@ -233,7 +243,7 @@ func sendSignalMessage(session *Session) error {
 		}
 	}
 
-	signalMsg := session.From + "\n\n" + session.Email.Subject + "\n\n" + session.Email.TextBody
+	signalMsg := session.From + "\n\n" + session.Subject + "\n\n" + session.Body
 
 	var fromUsername string
 	if strings.Contains(session.From, "@signal.bridge") {

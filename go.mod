@@ -8,7 +8,6 @@ require (
 	github.com/emersion/go-sasl v0.0.0-20220912192320-0145f2c60ead
 	github.com/emersion/go-smtp v0.20.2
 	github.com/google/uuid v1.3.0
-	github.com/marcospgmelo/parsemail v1.3.1-0.20201020162348-38663e9311e7
 	gitlab.com/signald/signald-go v0.6.1
 	golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c // indirect
 )

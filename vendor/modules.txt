@@ -79,9 +79,6 @@ github.com/mailru/easyjson
 github.com/mailru/easyjson/buffer
 github.com/mailru/easyjson/jlexer
 github.com/mailru/easyjson/jwriter
-# github.com/marcospgmelo/parsemail v1.3.1-0.20201020162348-38663e9311e7 => github.com/lawrencegripper/parsemail v1.3.1
-## explicit
-github.com/marcospgmelo/parsemail
 # gitlab.com/signald/signald-go v0.6.1
 ## explicit
 gitlab.com/signald/signald-go/signald
