@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/marcospgmelo/parsemail"
 	"gitlab.com/signald/signald-go/signald"
+	clientProtocol "gitlab.com/signald/signald-go/signald/client-protocol"
 	v1 "gitlab.com/signald/signald-go/signald/client-protocol/v1"
 )
 
@@ -30,11 +31,18 @@ func init() {
 	signaldClient = &signald.Signald{
 		SocketPath: "/signald/signald.sock",
 	}
+
+	signaldResponses := make(chan clientProtocol.BasicResponse)
 	err := signaldClient.Connect()
 	if err != nil {
 		panic(err)
 	}
-	go signaldClient.Listen(nil)
+
+	go signaldClient.Listen(signaldResponses)
+	go func() {
+		<-signaldResponses
+		panic("Signald closed the channel, usually means an error occurred")
+	}()
 }
 
 // The Backend implements SMTP server methods.
