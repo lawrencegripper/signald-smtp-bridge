@@ -5,6 +5,11 @@ import (
 )
 
 var (
+	ErrAuthFailed = &SMTPError{
+		Code:         535,
+		EnhancedCode: EnhancedCode{5, 7, 8},
+		Message:      "Authentication failed",
+	}
 	ErrAuthRequired = &SMTPError{
 		Code:         502,
 		EnhancedCode: EnhancedCode{5, 7, 0},
@@ -20,43 +25,6 @@ var (
 // A SMTP server backend.
 type Backend interface {
 	NewSession(c *Conn) (Session, error)
-}
-
-type BodyType string
-
-const (
-	Body7Bit       BodyType = "7BIT"
-	Body8BitMIME   BodyType = "8BITMIME"
-	BodyBinaryMIME BodyType = "BINARYMIME"
-)
-
-// MailOptions contains custom arguments that were
-// passed as an argument to the MAIL command.
-type MailOptions struct {
-	// Value of BODY= argument, 7BIT, 8BITMIME or BINARYMIME.
-	Body BodyType
-
-	// Size of the body. Can be 0 if not specified by client.
-	Size int
-
-	// TLS is required for the message transmission.
-	//
-	// The message should be rejected if it can't be transmitted
-	// with TLS.
-	RequireTLS bool
-
-	// The message envelope or message header contains UTF-8-encoded strings.
-	// This flag is set by SMTPUTF8-aware (RFC 6531) client.
-	UTF8 bool
-
-	// The authorization identity asserted by the message sender in decoded
-	// form with angle brackets stripped.
-	//
-	// nil value indicates missing AUTH, non-nil empty string indicates
-	// AUTH=<>.
-	//
-	// Defined in RFC 4954.
-	Auth *string
 }
 
 // Session is used by servers to respond to an SMTP client.
@@ -75,7 +43,7 @@ type Session interface {
 	// Set return path for currently processed message.
 	Mail(from string, opts *MailOptions) error
 	// Add recipient for currently processed message.
-	Rcpt(to string) error
+	Rcpt(to string, opts *RcptOptions) error
 	// Set currently processed message contents and send it.
 	//
 	// r must be consumed before Data returns.
@@ -85,6 +53,8 @@ type Session interface {
 // LMTPSession is an add-on interface for Session. It can be implemented by
 // LMTP servers to provide extra functionality.
 type LMTPSession interface {
+	Session
+
 	// LMTPData is the LMTP-specific version of Data method.
 	// It can be optionally implemented by the backend to provide
 	// per-recipient status information when it is used over LMTP

@@ -40,8 +40,15 @@ func init() {
 
 	go signaldClient.Listen(signaldResponses)
 	go func() {
-		<-signaldResponses
-		panic("Signald closed the channel, usually means an error occurred")
+		for {
+			response, more := <-signaldResponses
+			if !more {
+				log.Printf("more: %+v response: %+v\n", more, response)
+				panic("Signald closed the channel, usually means an error occurred")
+			}
+
+			log.Printf("signald response: %+v\n", response)
+		}
 	}()
 }
 
@@ -67,23 +74,25 @@ func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
 	return nil
 }
 
-func (s *Session) Rcpt(to string) error {
+func (s *Session) Rcpt(to string, opts *smtp.RcptOptions) error {
 	log.Println("Rcpt to:", to)
 	s.To = to
 	return nil
 }
 
 func (s *Session) Data(r io.Reader) error {
-	if b, err := ioutil.ReadAll(r); err != nil {
+	if bodyBytes, err := io.ReadAll(r); err != nil {
+		log.Println(err)
 		return err
 	} else {
 		if os.Getenv("DEBUG") == "TRUE" {
-			log.Println("DEBUG Data:", string(b))
+			log.Println("DEBUG Data:", string(bodyBytes))
 		}
-		s.MessageData = string(b)
+		s.MessageData = string(bodyBytes)
 	}
 
 	if err := parseEmail(s); err != nil {
+		log.Println(err)
 		return err
 	}
 
@@ -277,7 +286,6 @@ func sendSignalMessage(session *Session) error {
 	resp, err := req.Submit(signaldClient)
 	if err != nil {
 		log.Printf("crashing -> error sending request to signald: %+v\n", err)
-		os.Exit(1)
 	}
 	for _, msgSent := range resp.Results {
 		log.Printf("Sent to: %s in %v ms\n", msgSent.Address.Number, msgSent.Success.Duration)

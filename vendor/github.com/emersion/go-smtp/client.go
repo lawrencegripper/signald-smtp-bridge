@@ -21,15 +21,10 @@ import (
 
 // A Client represents a client connection to an SMTP server.
 type Client struct {
-	// Text is the textproto.Conn used by the Client. It is exported to allow for
-	// clients to add extensions.
-	Text *textproto.Conn
-
 	// keep a reference to the connection so it can be used to create a TLS
 	// connection later
-	conn net.Conn
-	// whether the Client is using TLS
-	tls        bool
+	conn       net.Conn
+	text       *textproto.Conn
 	serverName string
 	lmtp       bool
 	// map of supported extensions
@@ -50,19 +45,24 @@ type Client struct {
 	DebugWriter io.Writer
 }
 
-// 30 seconds was chosen as it's the
-// same duration as http.DefaultTransport's timeout.
-var defaultTimeout = 30 * time.Second
+// 30 seconds was chosen as it's the same duration as http.DefaultTransport's
+// timeout.
+const defaultTimeout = 30 * time.Second
 
-// Dial returns a new Client connected to an SMTP server at addr.
-// The addr must include a port, as in "mail.example.com:smtp".
+var defaultDialer = net.Dialer{Timeout: defaultTimeout}
+
+// Dial returns a new Client connected to an SMTP server at addr. The addr must
+// include a port, as in "mail.example.com:smtp".
+//
+// This function returns a plaintext connection. To enable TLS, use StartTLS.
 func Dial(addr string) (*Client, error) {
-	conn, err := net.DialTimeout("tcp", addr, defaultTimeout)
+	conn, err := defaultDialer.Dial("tcp", addr)
 	if err != nil {
 		return nil, err
 	}
-	host, _, _ := net.SplitHostPort(addr)
-	return NewClient(conn, host)
+	client := NewClient(conn)
+	client.serverName, _, _ = net.SplitHostPort(addr)
+	return client, nil
 }
 
 // DialTLS returns a new Client connected to an SMTP server via TLS at addr.
@@ -71,25 +71,23 @@ func Dial(addr string) (*Client, error) {
 // A nil tlsConfig is equivalent to a zero tls.Config.
 func DialTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
 	tlsDialer := tls.Dialer{
-		NetDialer: &net.Dialer{
-			Timeout: defaultTimeout,
-		},
-		Config: tlsConfig,
+		NetDialer: &defaultDialer,
+		Config:    tlsConfig,
 	}
 	conn, err := tlsDialer.Dial("tcp", addr)
 	if err != nil {
 		return nil, err
 	}
-	host, _, _ := net.SplitHostPort(addr)
-	return NewClient(conn, host)
+	client := NewClient(conn)
+	client.serverName, _, _ = net.SplitHostPort(addr)
+	return client, nil
 }
 
 // NewClient returns a new Client using an existing connection and host as a
 // server name to be used when authenticating.
-func NewClient(conn net.Conn, host string) (*Client, error) {
+func NewClient(conn net.Conn) *Client {
 	c := &Client{
-		serverName: host,
-		localName:  "localhost",
+		localName: "localhost",
 		// As recommended by RFC 5321. For DATA command reply (3xx one) RFC
 		// recommends a slightly shorter timeout but we do not bother
 		// differentiating these.
@@ -101,31 +99,15 @@ func NewClient(conn net.Conn, host string) (*Client, error) {
 
 	c.setConn(conn)
 
-	// Initial greeting timeout. RFC 5321 recommends 5 minutes.
-	c.conn.SetDeadline(time.Now().Add(5 * time.Minute))
-	defer c.conn.SetDeadline(time.Time{})
-
-	_, _, err := c.Text.ReadResponse(220)
-	if err != nil {
-		c.Text.Close()
-		if protoErr, ok := err.(*textproto.Error); ok {
-			return nil, toSMTPErr(protoErr)
-		}
-		return nil, err
-	}
-
-	return c, nil
+	return c
 }
 
 // NewClientLMTP returns a new LMTP Client (as defined in RFC 2033) using an
 // existing connection and host as a server name to be used when authenticating.
-func NewClientLMTP(conn net.Conn, host string) (*Client, error) {
-	c, err := NewClient(conn, host)
-	if err != nil {
-		return nil, err
-	}
+func NewClientLMTP(conn net.Conn) *Client {
+	c := NewClient(conn)
 	c.lmtp = true
-	return c, nil
+	return c
 }
 
 // setConn sets the underlying network connection for the client.
@@ -153,23 +135,38 @@ func (c *Client) setConn(conn net.Conn) {
 		Writer: w,
 		Closer: conn,
 	}
-	c.Text = textproto.NewConn(rwc)
-
-	_, isTLS := conn.(*tls.Conn)
-	c.tls = isTLS
+	c.text = textproto.NewConn(rwc)
 }
 
 // Close closes the connection.
 func (c *Client) Close() error {
-	return c.Text.Close()
+	return c.text.Close()
+}
+
+func (c *Client) greet() error {
+	// Initial greeting timeout. RFC 5321 recommends 5 minutes.
+	c.conn.SetDeadline(time.Now().Add(c.CommandTimeout))
+	defer c.conn.SetDeadline(time.Time{})
+
+	_, _, err := c.text.ReadResponse(220)
+	if err != nil {
+		c.text.Close()
+		if protoErr, ok := err.(*textproto.Error); ok {
+			return toSMTPErr(protoErr)
+		}
+		return err
+	}
+
+	return nil
 }
 
 // hello runs a hello exchange if needed.
 func (c *Client) hello() error {
 	if !c.didHello {
 		c.didHello = true
-		err := c.ehlo()
-		if err != nil {
+		if err := c.greet(); err != nil {
+			c.helloError = err
+		} else if err := c.ehlo(); err != nil {
 			c.helloError = c.helo()
 		}
 	}
@@ -195,18 +192,18 @@ func (c *Client) Hello(localName string) error {
 }
 
 // cmd is a convenience function that sends a command and returns the response
-// textproto.Error returned by c.Text.ReadResponse is converted into SMTPError.
+// textproto.Error returned by c.text.ReadResponse is converted into SMTPError.
 func (c *Client) cmd(expectCode int, format string, args ...interface{}) (int, string, error) {
 	c.conn.SetDeadline(time.Now().Add(c.CommandTimeout))
 	defer c.conn.SetDeadline(time.Time{})
 
-	id, err := c.Text.Cmd(format, args...)
+	id, err := c.text.Cmd(format, args...)
 	if err != nil {
 		return 0, "", err
 	}
-	c.Text.StartResponse(id)
-	defer c.Text.EndResponse(id)
-	code, msg, err := c.Text.ReadResponse(expectCode)
+	c.text.StartResponse(id)
+	defer c.text.EndResponse(id)
+	code, msg, err := c.text.ReadResponse(expectCode)
 	if err != nil {
 		if protoErr, ok := err.(*textproto.Error); ok {
 			smtpErr := toSMTPErr(protoErr)
@@ -274,7 +271,7 @@ func (c *Client) StartTLS(config *tls.Config) error {
 	if config == nil {
 		config = &tls.Config{}
 	}
-	if config.ServerName == "" {
+	if config.ServerName == "" && c.serverName != "" {
 		// Make a copy to avoid polluting argument
 		config = config.Clone()
 		config.ServerName = c.serverName
@@ -379,34 +376,54 @@ func (c *Client) Mail(from string, opts *MailOptions) error {
 	if err := c.hello(); err != nil {
 		return err
 	}
-	cmdStr := "MAIL FROM:<%s>"
+
+	var sb strings.Builder
+	// A high enough power of 2 than 510+14+26+11+9+9+39+500
+	sb.Grow(2048)
+	fmt.Fprintf(&sb, "MAIL FROM:<%s>", from)
 	if _, ok := c.ext["8BITMIME"]; ok {
-		cmdStr += " BODY=8BITMIME"
+		sb.WriteString(" BODY=8BITMIME")
 	}
 	if _, ok := c.ext["SIZE"]; ok && opts != nil && opts.Size != 0 {
-		cmdStr += " SIZE=" + strconv.Itoa(opts.Size)
+		fmt.Fprintf(&sb, " SIZE=%v", opts.Size)
 	}
 	if opts != nil && opts.RequireTLS {
 		if _, ok := c.ext["REQUIRETLS"]; ok {
-			cmdStr += " REQUIRETLS"
+			sb.WriteString(" REQUIRETLS")
 		} else {
 			return errors.New("smtp: server does not support REQUIRETLS")
 		}
 	}
 	if opts != nil && opts.UTF8 {
 		if _, ok := c.ext["SMTPUTF8"]; ok {
-			cmdStr += " SMTPUTF8"
+			sb.WriteString(" SMTPUTF8")
 		} else {
 			return errors.New("smtp: server does not support SMTPUTF8")
 		}
 	}
+	if _, ok := c.ext["DSN"]; ok && opts != nil {
+		switch opts.Return {
+		case DSNReturnFull, DSNReturnHeaders:
+			fmt.Fprintf(&sb, " RET=%s", string(opts.Return))
+		case "":
+			// This space is intentionally left blank
+		default:
+			return errors.New("smtp: Unknown RET parameter value")
+		}
+		if opts.EnvelopeID != "" {
+			if !isPrintableASCII(opts.EnvelopeID) {
+				return errors.New("smtp: Malformed ENVID parameter value")
+			}
+			fmt.Fprintf(&sb, " ENVID=%s", encodeXtext(opts.EnvelopeID))
+		}
+	}
 	if opts != nil && opts.Auth != nil {
 		if _, ok := c.ext["AUTH"]; ok {
-			cmdStr += " AUTH=" + encodeXtext(*opts.Auth)
+			fmt.Fprintf(&sb, " AUTH=%s", encodeXtext(*opts.Auth))
 		}
 		// We can safely discard parameter if server does not support AUTH.
 	}
-	_, _, err := c.cmd(250, cmdStr, from)
+	_, _, err := c.cmd(250, "%s", sb.String())
 	return err
 }
 
@@ -414,12 +431,53 @@ func (c *Client) Mail(from string, opts *MailOptions) error {
 // A call to Rcpt must be preceded by a call to Mail and may be followed by
 // a Data call or another Rcpt call.
 //
+// If opts is not nil, RCPT arguments provided in the structure will be added
+// to the command. Handling of unsupported options depends on the extension.
+//
 // If server returns an error, it will be of type *SMTPError.
-func (c *Client) Rcpt(to string) error {
+func (c *Client) Rcpt(to string, opts *RcptOptions) error {
 	if err := validateLine(to); err != nil {
 		return err
 	}
-	if _, _, err := c.cmd(25, "RCPT TO:<%s>", to); err != nil {
+
+	var sb strings.Builder
+	// A high enough power of 2 than 510+29+501
+	sb.Grow(2048)
+	fmt.Fprintf(&sb, "RCPT TO:<%s>", to)
+	if _, ok := c.ext["DSN"]; ok && opts != nil {
+		if opts.Notify != nil && len(opts.Notify) != 0 {
+			sb.WriteString(" NOTIFY=")
+			if err := checkNotifySet(opts.Notify); err != nil {
+				return errors.New("smtp: Malformed NOTIFY parameter value")
+			}
+			for i, v := range opts.Notify {
+				if i != 0 {
+					sb.WriteString(",")
+				}
+				sb.WriteString(string(v))
+			}
+		}
+		if opts.OriginalRecipient != "" {
+			var enc string
+			switch opts.OriginalRecipientType {
+			case DSNAddressTypeRFC822:
+				if !isPrintableASCII(opts.OriginalRecipient) {
+					return errors.New("smtp: Illegal address")
+				}
+				enc = encodeXtext(opts.OriginalRecipient)
+			case DSNAddressTypeUTF8:
+				if _, ok := c.ext["SMTPUTF8"]; ok {
+					enc = encodeUTF8AddrUnitext(opts.OriginalRecipient)
+				} else {
+					enc = encodeUTF8AddrXtext(opts.OriginalRecipient)
+				}
+			default:
+				return errors.New("smtp: Unknown address type")
+			}
+			fmt.Fprintf(&sb, " ORCPT=%s;%s", string(opts.OriginalRecipientType), enc)
+		}
+	}
+	if _, _, err := c.cmd(25, "%s", sb.String()); err != nil {
 		return err
 	}
 	c.rcpts = append(c.rcpts, to)
@@ -449,7 +507,7 @@ func (d *dataCloser) Close() error {
 	if d.c.lmtp {
 		for expectedResponses > 0 {
 			rcpt := d.c.rcpts[len(d.c.rcpts)-expectedResponses]
-			if _, _, err := d.c.Text.ReadResponse(250); err != nil {
+			if _, _, err := d.c.text.ReadResponse(250); err != nil {
 				if protoErr, ok := err.(*textproto.Error); ok {
 					if d.statusCb != nil {
 						d.statusCb(rcpt, toSMTPErr(protoErr))
@@ -463,7 +521,7 @@ func (d *dataCloser) Close() error {
 			expectedResponses--
 		}
 	} else {
-		_, _, err := d.c.Text.ReadResponse(250)
+		_, _, err := d.c.text.ReadResponse(250)
 		if err != nil {
 			if protoErr, ok := err.(*textproto.Error); ok {
 				return toSMTPErr(protoErr)
@@ -487,7 +545,7 @@ func (c *Client) Data() (io.WriteCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &dataCloser{c: c, WriteCloser: c.Text.DotWriter()}, nil
+	return &dataCloser{c: c, WriteCloser: c.text.DotWriter()}, nil
 }
 
 // LMTPData is the LMTP-specific version of the Data method. It accepts a callback
@@ -507,7 +565,7 @@ func (c *Client) LMTPData(statusCb func(rcpt string, status *SMTPError)) (io.Wri
 	if err != nil {
 		return nil, err
 	}
-	return &dataCloser{c: c, WriteCloser: c.Text.DotWriter(), statusCb: statusCb}, nil
+	return &dataCloser{c: c, WriteCloser: c.text.DotWriter(), statusCb: statusCb}, nil
 }
 
 // SendMail will use an existing connection to send an email from
@@ -531,7 +589,7 @@ func (c *Client) SendMail(from string, to []string, r io.Reader) error {
 		return err
 	}
 	for _, addr := range to {
-		if err = c.Rcpt(addr); err != nil {
+		if err = c.Rcpt(addr, nil); err != nil {
 			return err
 		}
 	}
@@ -543,11 +601,7 @@ func (c *Client) SendMail(from string, to []string, r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	err = w.Close()
-	if err != nil {
-		return err
-	}
-	return c.Quit()
+	return w.Close()
 }
 
 var testHookStartTLS func(*tls.Config) // nil, except for tests
@@ -582,6 +636,7 @@ func SendMail(addr string, a sasl.Client, from string, to []string, r io.Reader)
 			return err
 		}
 	}
+
 	c, err := Dial(addr)
 	if err != nil {
 		return err
@@ -597,15 +652,52 @@ func SendMail(addr string, a sasl.Client, from string, to []string, r io.Reader)
 	if err = c.StartTLS(nil); err != nil {
 		return err
 	}
-	if a != nil && c.ext != nil {
-		if _, ok := c.ext["AUTH"]; !ok {
+	if a != nil {
+		if ok, _ := c.Extension("AUTH"); !ok {
 			return errors.New("smtp: server doesn't support AUTH")
 		}
 		if err = c.Auth(a); err != nil {
 			return err
 		}
 	}
-	return c.SendMail(from, to, r)
+	if err := c.SendMail(from, to, r); err != nil {
+		return err
+	}
+	return c.Quit()
+}
+
+// SendMailTLS works like SendMail, but with implicit TLS.
+func SendMailTLS(addr string, a sasl.Client, from string, to []string, r io.Reader) error {
+	if err := validateLine(from); err != nil {
+		return err
+	}
+	for _, recp := range to {
+		if err := validateLine(recp); err != nil {
+			return err
+		}
+	}
+
+	c, err := DialTLS(addr, nil)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	if err = c.hello(); err != nil {
+		return err
+	}
+	if a != nil {
+		if ok, _ := c.Extension("AUTH"); !ok {
+			return errors.New("smtp: server doesn't support AUTH")
+		}
+		if err = c.Auth(a); err != nil {
+			return err
+		}
+	}
+	if err := c.SendMail(from, to, r); err != nil {
+		return err
+	}
+	return c.Quit()
 }
 
 // Extension reports whether an extension is support by the server.
@@ -659,7 +751,7 @@ func (c *Client) Quit() error {
 	if err != nil {
 		return err
 	}
-	return c.Text.Close()
+	return c.Close()
 }
 
 func parseEnhancedCode(s string) (EnhancedCode, error) {
@@ -682,9 +774,6 @@ func parseEnhancedCode(s string) (EnhancedCode, error) {
 // toSMTPErr converts textproto.Error into SMTPError, parsing
 // enhanced status code if it is present.
 func toSMTPErr(protoErr *textproto.Error) *SMTPError {
-	if protoErr == nil {
-		return nil
-	}
 	smtpErr := &SMTPError{
 		Code:    protoErr.Code,
 		Message: protoErr.Msg,
@@ -719,4 +808,12 @@ func (cdw clientDebugWriter) Write(b []byte) (int, error) {
 		return len(b), nil
 	}
 	return cdw.c.DebugWriter.Write(b)
+}
+
+// validateLine checks to see if a line has CR or LF.
+func validateLine(line string) error {
+	if strings.ContainsAny(line, "\n\r") {
+		return errors.New("smtp: a line must not contain CR or LF")
+	}
+	return nil
 }

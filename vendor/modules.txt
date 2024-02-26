@@ -56,7 +56,7 @@ github.com/chromedp/sysutil
 # github.com/emersion/go-sasl v0.0.0-20220912192320-0145f2c60ead
 ## explicit
 github.com/emersion/go-sasl
-# github.com/emersion/go-smtp v0.15.1-0.20221021114529-49b17434419d
+# github.com/emersion/go-smtp v0.20.2
 ## explicit
 github.com/emersion/go-smtp
 # github.com/gobwas/httphead v0.1.0
