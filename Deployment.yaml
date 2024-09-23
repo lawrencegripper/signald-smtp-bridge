@@ -45,6 +45,10 @@ spec:
               value: testpwd
             - name: SMTP_USERNAME
               value: testuser
+            - name: SYNAPSE_SERVER_URL
+              value: https://your.synapse.server.url
+            - name: SYNAPSE_TOKEN
+              value: your-synapse-token
           ports:
             - containerPort: 1025
               name: smtp-server
@@ -53,7 +57,7 @@ spec:
               memory: "300Mi"
               cpu: "500m"
           volumeMounts:
-            - mountPath: /signald
+            - mountPath: /synapse
               name: configdir
         - image: chromedp/headless-shell
           name: headless-chrome
@@ -68,18 +72,9 @@ spec:
             limits:
               memory: "300Mi"
               cpu: "500m"
-        - image: finn/signald
-          name: signald
-          resources:
-            limits:
-              memory: "300Mi"
-              cpu: "500m"
-          volumeMounts:
-            - mountPath: /signald
-              name: configdir
       restartPolicy: Always
       volumes:
         - name: configdir
           hostPath:
-            path: /path/to/your/signald/config/folder
+            path: /path/to/your/synapse/config/folder
             type: Directory
