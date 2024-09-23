@@ -21,37 +21,23 @@ import (
 	"github.com/chromedp/chromedp"
 	"github.com/emersion/go-smtp"
 	"github.com/google/uuid"
-	"gitlab.com/signald/signald-go/signald"
-	clientProtocol "gitlab.com/signald/signald-go/signald/client-protocol"
-	v1 "gitlab.com/signald/signald-go/signald/client-protocol/v1"
+	"github.com/matrix-org/mautrix-go"
+	"github.com/matrix-org/mautrix-go/mautrix"
+	"github.com/matrix-org/mautrix-go/mautrix/event"
+	"github.com/matrix-org/mautrix-go/mautrix/id"
 )
 
-var signaldClient *signald.Signald
+var matrixClient *mautrix.Client
 
 func init() {
-	signaldClient = &signald.Signald{
-		SocketPath: "/signald/signald.sock",
-	}
+	serverURL := os.Getenv("SYNAPSE_SERVER_URL")
+	token := os.Getenv("SYNAPSE_TOKEN")
 
-	signaldResponses := make(chan clientProtocol.BasicResponse, 2)
-	err := signaldClient.Connect()
+	var err error
+	matrixClient, err = mautrix.NewClient(serverURL, "", token)
 	if err != nil {
 		panic(err)
 	}
-
-	go signaldClient.Listen(signaldResponses)
-	go func() {
-		for {
-			response, closed := <-signaldResponses
-			log.Printf("signald response: %+v\n", response)
-			log.Printf("signald response data: %+v\n", string(response.Data))
-			log.Printf("signald response error: %+v\n", string(response.Error))
-
-			if !closed {
-				panic("signald connection closed")
-			}
-		}
-	}()
 }
 
 // The Backend implements SMTP server methods.
@@ -100,7 +86,7 @@ func (s *Session) Data(r io.Reader) error {
 		return err
 	}
 
-	return sendSignalMessage(s)
+	return sendMatrixMessage(s)
 }
 
 func (s *Session) Reset() {}
@@ -144,10 +130,10 @@ func main() {
 	}
 }
 
-func mustGetSignalUserOrGroupFromAddress(address string) string {
+func mustGetMatrixUserOrGroupFromAddress(address string) string {
 	split := strings.Split(address, "@")
 	if len(split) < 2 {
-		panic("Invalid address must be 'numberOrGroupId@signal.bridge")
+		panic("Invalid address must be 'userOrGroupId@matrix.bridge")
 	}
 
 	return split[0]
@@ -231,7 +217,7 @@ func captureHTMLEmailAsPDF(session *Session) (string, error) {
 
 var phoneNumberRegex, _ = regexp.Compile("\\+?44[0-9]{10}")
 
-func sendSignalMessage(session *Session) error {
+func sendMatrixMessage(session *Session) error {
 	var pdfFile string
 	var err error
 	if session.ContentType != "text/plain" {
@@ -242,66 +228,58 @@ func sendSignalMessage(session *Session) error {
 		}
 	}
 
-	signalMsg := session.From + "\n\n" + session.Subject + "\n\n" + session.Body
+	matrixMsg := session.From + "\n\n" + session.Subject + "\n\n" + session.Body
 
 	var fromUsername string
-	if strings.Contains(session.From, "@signal.bridge") {
-		if !strings.HasPrefix(session.From, "+") {
+	if strings.Contains(session.From, "@matrix.bridge") {
+		if !strings.HasPrefix(session.From, "@") {
 			fromUsername = os.Getenv("SEND_FROM")
 		} else {
-			fromUsername = mustGetSignalUserOrGroupFromAddress(session.From)
+			fromUsername = mustGetMatrixUserOrGroupFromAddress(session.From)
 		}
 	} else {
 		fromUsername = os.Getenv("SEND_FROM")
 	}
 
-	log.Printf("Converting email session to signal msg")
+	log.Printf("Converting email session to matrix msg")
 	log.Printf("Sending from account: %q", fromUsername)
 
-	req := v1.SendRequest{
-		Username:    fromUsername,
-		MessageBody: signalMsg,
+	content := event.MessageEventContent{
+		MsgType: event.MsgText,
+		Body:    matrixMsg,
 	}
 
-	// check file exists
-	_, err = os.Stat(pdfFile)
-	if err == nil {
-		req.Attachments = []*v1.JsonAttachment{
-			{Filename: pdfFile},
-		}
-	}
-
-	if strings.Contains(session.To, "@signal.bridge") {
-		recipient := mustGetSignalUserOrGroupFromAddress(session.To)
+	if strings.Contains(session.To, "@matrix.bridge") {
+		recipient := mustGetMatrixUserOrGroupFromAddress(session.To)
 
 		if phoneNumberRegex.MatchString(recipient) {
-			if !strings.HasPrefix(recipient, "+") {
-				recipient = "+" + recipient
+			if !strings.HasPrefix(recipient, "@") {
+				recipient = "@" + recipient
 			}
-			req.RecipientAddress = &v1.JsonAddress{Number: recipient}
-			log.Printf("Sending to user: %q", recipient)
+			_, err = matrixClient.SendMessageEvent(id.RoomID(recipient), event.EventMessage, content)
+			if err != nil {
+				log.Printf("Error sending message to user: %q", recipient)
+			} else {
+				log.Printf("Sent to user: %q", recipient)
+			}
 		} else {
-			req.RecipientGroupID = recipient
-			log.Printf("Sending to group: %q", recipient)
+			_, err = matrixClient.SendMessageEvent(id.RoomID(recipient), event.EventMessage, content)
+			if err != nil {
+				log.Printf("Error sending message to group: %q", recipient)
+			} else {
+				log.Printf("Sent to group: %q", recipient)
+			}
 		}
 	} else {
-		req.RecipientAddress = &v1.JsonAddress{Number: os.Getenv("SEND_TO")}
+		_, err = matrixClient.SendMessageEvent(id.RoomID(os.Getenv("SEND_TO")), event.EventMessage, content)
+		if err != nil {
+			log.Printf("Error sending message to default recipient: %q", os.Getenv("SEND_TO"))
+		} else {
+			log.Printf("Sent to default recipient: %q", os.Getenv("SEND_TO"))
+		}
 	}
 
-	if os.Getenv("DEBUG") == "TRUE" {
-		log.Printf("DEBUG signal send request: %+v", req)
-	}
-
-	resp, err := req.Submit(signaldClient)
-	if err != nil {
-		log.Printf("crashing -> error sending request to signald: %+v\n", err)
-	}
-	for _, msgSent := range resp.Results {
-		log.Printf("Sent to: %s in %v ms\n", msgSent.Address.Number, msgSent.Success.Duration)
-	}
-
-	_, err = os.Stat(pdfFile)
-	if err == nil {
+	if pdfFile != "" {
 		os.Remove(pdfFile)
 	}
 
