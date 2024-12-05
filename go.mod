@@ -18,7 +18,9 @@ require (
 	github.com/gobwas/ws v1.1.0-rc.5 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
-	golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c // indirect
+	github.com/windvalley/go-mailparser v0.2.2 // indirect
+	golang.org/x/sys v0.5.0 // indirect
+	golang.org/x/text v0.10.0 // indirect
 )
 
 replace github.com/marcospgmelo/parsemail => github.com/lawrencegripper/parsemail v1.3.1

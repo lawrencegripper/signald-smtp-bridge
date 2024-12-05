@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -21,6 +22,7 @@ import (
 	"github.com/chromedp/chromedp"
 	"github.com/emersion/go-smtp"
 	"github.com/google/uuid"
+	"github.com/windvalley/go-mailparser"
 	"gitlab.com/signald/signald-go/signald"
 	clientProtocol "gitlab.com/signald/signald-go/signald/client-protocol"
 	v1 "gitlab.com/signald/signald-go/signald/client-protocol/v1"
@@ -67,6 +69,7 @@ type Session struct {
 	To          string
 	MessageData string
 	Body        string
+	BodyBytes   []byte
 	Subject     string
 	ContentType string
 	Anonymous   bool
@@ -92,6 +95,7 @@ func (s *Session) Data(r io.Reader) error {
 		if os.Getenv("DEBUG") == "TRUE" {
 			log.Println("DEBUG Data:", string(bodyBytes))
 		}
+		s.BodyBytes = bodyBytes
 		s.MessageData = string(bodyBytes)
 	}
 
@@ -234,15 +238,22 @@ var phoneNumberRegex, _ = regexp.Compile("\\+?44[0-9]{10}")
 func sendSignalMessage(session *Session) error {
 	var pdfFile string
 	var err error
-	if session.ContentType != "text/plain" {
-		log.Println("Converting HTML mail to pdf file")
-		pdfFile, err = captureHTMLEmailAsPDF(session)
-		if err != nil {
-			log.Println("PDF conversion failed")
-		}
-	}
+	// if session.ContentType != "text/plain" {
+	// 	log.Println("Converting HTML mail to pdf file")
+	// 	pdfFile, err = captureHTMLEmailAsPDF(session)
+	// 	if err != nil {
+	// 		log.Println("PDF conversion failed")
+	// 	}
+	// }
 
-	signalMsg := session.From + "\n\n" + session.Subject + "\n\n" + session.Body
+	// parse email
+	r := bytes.NewReader(session.BodyBytes)
+	res, err := mailparser.Parse(r)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+	signalMsg := session.From + "\n\n" + session.Subject + "\n\n" + res.Body
 
 	var fromUsername string
 	if strings.Contains(session.From, "@signal.bridge") {
@@ -263,13 +274,13 @@ func sendSignalMessage(session *Session) error {
 		MessageBody: signalMsg,
 	}
 
-	// check file exists
-	_, err = os.Stat(pdfFile)
-	if err == nil {
-		req.Attachments = []*v1.JsonAttachment{
-			{Filename: pdfFile},
-		}
-	}
+	// // check file exists
+	// _, err = os.Stat(pdfFile)
+	// if err == nil {
+	// 	req.Attachments = []*v1.JsonAttachment{
+	// 		{Filename: pdfFile},
+	// 	}
+	// }
 
 	if strings.Contains(session.To, "@signal.bridge") {
 		recipient := mustGetSignalUserOrGroupFromAddress(session.To)
